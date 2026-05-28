@@ -11,7 +11,7 @@ backend.
 ## Requirements
 
 - Python 3.11 or newer
-- Node.js 20 or newer
+- Node.js 18 or newer
 - Internet access for market-data refreshes
 
 ## First Setup
