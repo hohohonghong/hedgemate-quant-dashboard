@@ -1,0 +1,637 @@
+import { resolveBackendAssetId } from './hedgemateApi';
+
+const ACTION_STATUS_LABELS = {
+  FORMAL_ACTION: '공식 실행 액션',
+  REVIEW_ACTION: '검토 액션',
+  RESEARCH_ONLY: '리서치 전용',
+  FAIL_ACTION: '기준 미통과',
+  NO_ACTION: '유효 액션 없음',
+};
+
+const ACTION_TYPE_LABELS = {
+  ADD_HEDGE: '헷지 추가 검토',
+  TRIM_AND_HEDGE: '비중 축소 + 헷지',
+  REPLACE_SLEEVE: '대체 편입 검토',
+  NO_ACTION: '액션 없음',
+  FAIL_ACTION: '기준 미통과',
+};
+
+const RECOMMENDATION_GRADE_LABELS = {
+  A: 'A 공식 실행 추천',
+  B: 'B 조건부 처방',
+  C: 'C 검토 후보',
+  D: 'D 참고 benchmark',
+};
+
+const SAFE_BENCHMARK_TICKERS = new Set([
+  '__CASH__',
+  'CASH',
+  'BIL',
+  'SGOV',
+  'SHV',
+  'SHY',
+  'VGSH',
+  'VGIT',
+  'VGLT',
+  'EDV',
+  'BND',
+  'AGG',
+  'GOVT',
+  'IEF',
+  'TLT',
+  'GLD',
+  'IAU',
+  'TIP',
+  'LQD',
+  'VCSH',
+  'VCIT',
+  '132030.KS',
+  '153130.KS',
+]);
+
+const GRADE_RANK = { A: 4, B: 3, C: 2, D: 1 };
+
+export const METRIC_DEFINITIONS = {
+  cvar: {
+    label: 'CVaR',
+    helper: '극단적으로 나쁜 장에서 예상되는 평균 손실',
+    lowerIsBetter: true,
+    baseKeys: ['base_cvar_95', 'baseCvar95', 'base_cvar', 'cvar'],
+    proposedKeys: ['proposed_cvar_95', 'proposedCvar95', 'proposed_cvar'],
+    deltaKeys: ['cvar_delta', 'cvarDelta'],
+    format: 'percent',
+  },
+  mdd: {
+    label: 'MDD',
+    helper: '고점 대비 최대 하락폭',
+    lowerIsBetter: true,
+    baseKeys: ['base_mdd', 'baseMdd', 'mdd'],
+    proposedKeys: ['proposed_mdd', 'proposedMdd'],
+    deltaKeys: ['mdd_delta', 'mddDelta'],
+    format: 'percent',
+  },
+  beta: {
+    label: 'beta',
+    helper: '시장 또는 특정 리스크에 얼마나 민감한지',
+    lowerIsBetter: true,
+    baseKeys: ['base_beta_sp500_krw', 'baseBetaSp500Krw', 'base_beta', 'beta'],
+    proposedKeys: ['proposed_beta_sp500_krw', 'proposedBetaSp500Krw', 'proposed_beta'],
+    deltaKeys: ['beta_delta', 'betaDelta'],
+    format: 'number',
+  },
+  stress: {
+    label: 'stress',
+    helper: '충격 상황에서의 예상 반응',
+    lowerIsBetter: true,
+    baseKeys: ['base_stress_avg_ret_krw', 'baseStressAvgRetKrw', 'base_stress', 'stress'],
+    proposedKeys: ['proposed_stress_avg_ret_krw', 'proposedStressAvgRetKrw', 'proposed_stress'],
+    deltaKeys: ['stress_delta', 'stressDelta'],
+    format: 'percent',
+  },
+  sharpe: {
+    label: 'Sharpe',
+    helper: '변동성 대비 수익 효율',
+    lowerIsBetter: false,
+    baseKeys: ['base_sharpe_krw_proxy', 'baseSharpeKrwProxy', 'base_sharpe', 'sharpe'],
+    proposedKeys: ['proposed_sharpe_krw_proxy', 'proposedSharpeKrwProxy', 'proposed_sharpe'],
+    deltaKeys: ['sharpe_delta', 'sharpeDelta'],
+    format: 'number',
+  },
+};
+
+const asArray = (value) => Array.isArray(value) ? value : [];
+
+const pick = (row, keys, fallback = null) => {
+  for (const key of keys) {
+    if (row?.[key] !== undefined && row?.[key] !== null && row?.[key] !== '') {
+      return row[key];
+    }
+  }
+  return fallback;
+};
+
+const toNumber = (value, fallback = null) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+
+const toBool = (value) => {
+  if (typeof value === 'boolean') return value;
+  return ['true', '1', 'y', 'yes'].includes(String(value || '').trim().toLowerCase());
+};
+
+const normalizeGrade = (row) => {
+  const grade = String(row?.recommendation_grade || row?.recommendationGrade || '').trim().toUpperCase();
+  return ['A', 'B', 'C', 'D'].includes(grade) ? grade : '';
+};
+
+const splitTickers = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return String(value || '')
+    .split(/[|,+]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const unsafeDisplayReplacements = [
+  ['정식 실행 추천', '검증 통과 액션'],
+  ['정식 추천', '검증 통과 액션'],
+  ['즉시 매수', '매수 검토'],
+  ['즉시 매도', '매도 검토'],
+  ['실행하기', '분석 실행'],
+  ['추천 포트폴리오 확정', '검토 포트폴리오'],
+  ['active bundle', '저장된 분석 결과'],
+];
+
+const safeKo = (value) => unsafeDisplayReplacements.reduce(
+  (text, [unsafe, replacement]) => text.replaceAll(unsafe, replacement),
+  String(value || '')
+);
+
+const metricSetFromAction = (row, prefix = 'base') => {
+  const result = {};
+  Object.entries(METRIC_DEFINITIONS).forEach(([key, definition]) => {
+    const valueKeys = prefix === 'base' ? definition.baseKeys : definition.proposedKeys;
+    result[key] = toNumber(pick(row, valueKeys), 0);
+  });
+  return result;
+};
+
+const improvementPct = (base, proposed, key) => {
+  const definition = METRIC_DEFINITIONS[key];
+  if (!Number.isFinite(base) || !Number.isFinite(proposed) || base === 0) return 0;
+  if (definition.lowerIsBetter) {
+    if (base < 0 || proposed < 0) {
+      return ((Math.abs(base) - Math.abs(proposed)) / Math.abs(base)) * 100;
+    }
+    return ((base - proposed) / Math.abs(base)) * 100;
+  }
+  return ((proposed - base) / Math.abs(base)) * 100;
+};
+
+export const formatMetricValue = (value, key) => {
+  if (!Number.isFinite(Number(value))) return 'N/A';
+  const definition = METRIC_DEFINITIONS[key];
+  if (definition?.format === 'percent') {
+    return `${(Number(value) * 100).toFixed(2)}%`;
+  }
+  return Number(value).toFixed(key === 'sharpe' ? 2 : 3);
+};
+
+export const formatMetricDelta = (base, proposed, key) => {
+  const pct = improvementPct(base, proposed, key);
+  const direction = pct >= 0 ? '개선' : '악화';
+  return `${Math.abs(pct).toFixed(2)}% ${direction}`;
+};
+
+const normalizeAction = (row, index, decision, portfolioMatches = true) => {
+  const actionStatus = String(row.action_status || row.actionStatus || 'NO_ACTION').toUpperCase();
+  const canExecute = Boolean(decision?.canExecuteAction) && portfolioMatches && actionStatus === 'FORMAL_ACTION' && toBool(row.can_execute_action);
+  const displayStatus = canExecute ? actionStatus : (actionStatus === 'FORMAL_ACTION' ? 'REVIEW_ACTION' : actionStatus);
+  const baseMetrics = metricSetFromAction(row, 'base');
+  const proposedMetrics = metricSetFromAction(row, 'proposed');
+  const hedgeTickers = splitTickers(row.candidate_tickers || row.hedge_asset || row.hedgeAsset);
+  const sourceTickers = splitTickers(row.source_tickers || row.source_asset || row.sourceAsset);
+  const recommendationGrade = normalizeGrade(row);
+
+  return {
+    id: row.action_id || row.actionId || `action-${index + 1}`,
+    rank: index + 1,
+    raw: row,
+    title: ACTION_TYPE_LABELS[row.action_type] || row.action_type || '검토 액션',
+    badge: ACTION_STATUS_LABELS[displayStatus] || '검토 필요 후보',
+    actionStatus,
+    displayStatus,
+    actionType: row.action_type || row.actionType || '',
+    recommendationGrade,
+    recommendationGradeLabel: row.recommendation_grade_label_ko || row.recommendationGradeLabelKo || RECOMMENDATION_GRADE_LABELS[recommendationGrade] || '등급 미분류',
+    recommendationGradeReason: safeKo(row.recommendation_grade_reason_ko || row.recommendationGradeReasonKo),
+    directVulnerabilityPrescription: toBool(row.direct_vulnerability_prescription || row.directVulnerabilityPrescription),
+    basisRiskLevel: row.basis_risk_level || row.basisRiskLevel || '',
+    prescriptionScore: toNumber(row.prescription_score ?? row.prescriptionScore, null),
+    canExecute,
+    riskSleeve: row.risk_sleeve || row.riskSleeve || '',
+    riskSleeveLabel: row.risk_sleeve_label_ko || row.riskSleeveLabelKo || row.risk_sleeve || '리스크 축',
+    sourceTickers,
+    hedgeTickers,
+    candidateLabel: row.candidate_label || row.candidateLabel || hedgeTickers.join(' + ') || '헷지 후보',
+    currentWeight: toNumber(row.current_weight ?? row.source_current_weight_pct, 0),
+    proposedWeight: toNumber(row.proposed_weight ?? row.source_proposed_weight_pct, 0),
+    hedgeWeight: toNumber(row.hedge_proposed_weight_pct, 0),
+    vulnerabilityImprovePct: toNumber(row.vulnerability_improve_pct, 0),
+    beforeSleeveVulnerability: toNumber(row.before_sleeve_vulnerability, 0),
+    afterSleeveVulnerability: toNumber(row.after_sleeve_vulnerability, 0),
+    expectedEffect: safeKo(row.expected_effect),
+    actionReasonKo: safeKo(row.action_reason_ko || row.plain_korean_reason),
+    plainKoreanReason: safeKo(row.plain_korean_reason || row.action_reason_ko),
+    statusReasonKo: safeKo(row.status_reason_ko),
+    rejectedReasonKo: safeKo(row.rejected_reason_ko),
+    selectionReasonKo: safeKo(row.selection_reason_ko || row.not_selected_reason_ko),
+    baseMetrics,
+    proposedMetrics,
+    metricRows: Object.keys(METRIC_DEFINITIONS).map((metricKey) => ({
+      key: metricKey,
+      label: METRIC_DEFINITIONS[metricKey].label,
+      helper: METRIC_DEFINITIONS[metricKey].helper,
+      base: baseMetrics[metricKey],
+      proposed: proposedMetrics[metricKey],
+      formattedBase: formatMetricValue(baseMetrics[metricKey], metricKey),
+      formattedProposed: formatMetricValue(proposedMetrics[metricKey], metricKey),
+      improvementText: formatMetricDelta(baseMetrics[metricKey], proposedMetrics[metricKey], metricKey),
+    })),
+  };
+};
+
+const normalizeVulnerability = (row, index, total = 0) => {
+  const sourceHoldings = asArray(row.source_holdings || row.sourceHoldings);
+  return {
+    rank: index + 1,
+    riskSleeve: row.risk_sleeve || row.riskSleeve || '',
+    label: row.risk_sleeve_label_ko || row.riskSleeveLabelKo || row.risk_sleeve || '리스크 축',
+    netVulnerability: toNumber(row.net_vulnerability ?? row.netVulnerability, 0),
+    contributionPct: total ? (toNumber(row.net_vulnerability ?? row.netVulnerability, 0) / total) * 100 : 0,
+    sourceHoldings: sourceHoldings.slice(0, 5).map((holding) => ({
+      ticker: holding.ticker,
+      contribution: toNumber(holding.contribution, 0),
+    })),
+    offsetHoldings: asArray(row.offset_holdings || row.offsetHoldings).slice(0, 5),
+  };
+};
+
+const normalizeAttribution = (row, index) => ({
+  id: `${row.risk_sleeve || row.scenario || 'risk'}-${row.ticker || row.asset_ticker || 'asset'}-${index}`,
+  riskSleeve: row.risk_sleeve || row.riskSleeve || '',
+  riskSleeveLabel: row.risk_sleeve_label_ko || row.riskSleeveLabelKo || row.risk_sleeve || '',
+  scenario: row.scenario_name_ko || row.scenario || row.scenario_code || '',
+  asset: row.asset_ticker || row.ticker || row.source_asset || '',
+  sourceOrOffset: row.source_or_offset || '',
+  currentWeight: toNumber(row.current_weight_pct ?? row.current_weight ?? row.weight_pct, 0),
+  contributionPct: toNumber(row.contribution_pct ?? row.contribution_pct_of_sleeve ?? row.sleeve_contribution_pct, 0),
+  vulnerabilityContribution: toNumber(row.vulnerability_contribution ?? row.weighted_contribution, 0),
+  evidenceQuality: row.evidence_quality || '',
+  reason: safeKo(row.plain_korean_reason || row.plain_reason_ko),
+});
+
+const normalizeCandidate = (row, index) => {
+  const recommendationGrade = normalizeGrade(row);
+  return {
+    id: row.action_id || `candidate-${index + 1}`,
+    status: row.action_status === 'FORMAL_ACTION' && !toBool(row.can_execute_action) ? 'REVIEW_ACTION' : (row.action_status || 'NO_ACTION'),
+    actionType: row.action_type || '',
+    recommendationGrade,
+    recommendationGradeLabel: row.recommendation_grade_label_ko || row.recommendationGradeLabelKo || RECOMMENDATION_GRADE_LABELS[recommendationGrade] || '등급 미분류',
+    recommendationGradeReason: safeKo(row.recommendation_grade_reason_ko || row.recommendationGradeReasonKo),
+    riskSleeve: row.risk_sleeve || row.riskSleeve || '',
+    riskSleeveLabel: row.risk_sleeve_label_ko || row.risk_sleeve || '',
+    sourceAsset: row.source_asset || row.source_tickers || '',
+    hedgeAsset: row.candidate_label || row.hedge_asset || row.candidate_tickers || '',
+    improvePct: toNumber(row.vulnerability_improve_pct, 0),
+    canExecute: toBool(row.can_execute_action),
+    directVulnerabilityPrescription: toBool(row.direct_vulnerability_prescription || row.directVulnerabilityPrescription),
+    blockers: row.formal_gate_blockers || row.linked_formal_gate_blockers || row.formal_gate_status || '',
+    reason: safeKo(
+      row.plain_korean_reason
+      || row.action_reason_ko
+      || row.status_reason_ko
+      || row.not_selected_reason_ko
+      || row.rejected_reason_ko
+      || row.recommendation_grade_reason_ko
+      || row.formal_gate_blockers
+      || row.linked_formal_gate_blocker_summary
+      || row.formal_gate_status
+      || row.action_status
+    ),
+  };
+};
+
+const normalizeActionTypeCoverage = (coverage = {}) => {
+  return Object.entries(coverage).map(([actionType, item]) => ({
+    actionType,
+    label: ACTION_TYPE_LABELS[actionType] || actionType,
+    candidateCount: Number(item?.candidate_count ?? item?.count ?? 0),
+    selectedCount: Number(item?.selected_count ?? 0),
+    presentInCandidates: Boolean(item?.present_in_candidates ?? item?.present),
+    presentInSelected: Boolean(item?.present_in_selected),
+    reasonKo: safeKo(item?.reason_ko),
+    absenceReasonKo: safeKo(item?.absence_reason_ko),
+    absenceReasonCode: item?.absence_reason_code || '',
+  }));
+};
+
+const selectedTickerList = (portfolio) => {
+  return (portfolio?.assets || [])
+    .map((asset) => resolveBackendAssetId(asset))
+    .filter(Boolean)
+    .sort();
+};
+
+const activeTickerList = (payload) => {
+  const tickers = payload?.activeBundle?.portfolio_input_fingerprint?.tickers
+    || payload?.manifest?.active_bundle?.portfolio_input_fingerprint?.tickers
+    || payload?.activeBundle?.portfolioTickers
+    || payload?.manifest?.active_bundle?.portfolioTickers
+    || [];
+  return [...tickers].filter(Boolean).sort();
+};
+
+const sameSet = (a, b) => a.size === b.size && [...a].every((value) => b.has(value));
+
+const normalizeTicker = (ticker) => String(ticker || '').trim().toUpperCase();
+
+const normalizeTickerList = (tickers) => [...new Set((tickers || []).map(normalizeTicker).filter(Boolean))].sort();
+
+const splitAssetText = (value) => splitTickers(value).map(normalizeTicker).filter(Boolean);
+
+const includesBenchmarkAsset = (value) => splitAssetText(value).some((ticker) => SAFE_BENCHMARK_TICKERS.has(ticker));
+
+const sameRiskSleeve = (left, right) => normalizeTicker(left) === normalizeTicker(right);
+
+const prescriptionCandidateFromAction = (action) => ({
+  id: action.id,
+  source: 'selected',
+  status: action.displayStatus || action.actionStatus || '',
+  actionType: action.actionType,
+  riskSleeve: action.riskSleeve,
+  riskSleeveLabel: action.riskSleeveLabel,
+  sourceAsset: action.sourceTickers.join(', '),
+  hedgeAsset: action.candidateLabel || action.hedgeTickers.join(', '),
+  improvePct: action.vulnerabilityImprovePct,
+  canExecute: action.canExecute,
+  directVulnerabilityPrescription: Boolean(action.directVulnerabilityPrescription),
+  recommendationGrade: action.recommendationGrade,
+  recommendationGradeLabel: action.recommendationGradeLabel,
+  reason: action.plainKoreanReason || action.actionReasonKo || action.expectedEffect || action.statusReasonKo || '',
+  metricRows: action.metricRows,
+});
+
+const classifyPrescription = (candidate, directMatch) => {
+  if (!candidate) return { grade: 'D', benchmarkOnly: true };
+  const benchmarkOnly = includesBenchmarkAsset(candidate.hedgeAsset) && !directMatch;
+  if (benchmarkOnly) return { grade: 'D', benchmarkOnly: true };
+  if (candidate.canExecute && candidate.status === 'FORMAL_ACTION') return { grade: 'A', benchmarkOnly: false };
+  if (candidate.source === 'selected' && directMatch && ['FORMAL_ACTION', 'REVIEW_ACTION'].includes(candidate.status)) {
+    const existing = candidate.recommendationGrade || normalizeGrade(candidate);
+    return { grade: existing === 'A' ? 'A' : (existing || 'B'), benchmarkOnly: false };
+  }
+  if (directMatch && candidate.improvePct > 0) {
+    const existing = candidate.recommendationGrade || normalizeGrade(candidate);
+    return { grade: existing && existing !== 'A' ? existing : 'C', benchmarkOnly: false };
+  }
+  return { grade: 'D', benchmarkOnly: true };
+};
+
+const buildPrescriptionRows = (topVulnerabilities, actionCards) => {
+  const pool = actionCards.map(prescriptionCandidateFromAction);
+
+  return topVulnerabilities.slice(0, 3).map((vulnerability) => {
+    const directMatches = pool
+      .filter((candidate) => (
+        sameRiskSleeve(candidate.riskSleeve, vulnerability.riskSleeve)
+        && candidate.directVulnerabilityPrescription
+        && Number(candidate.improvePct) > 0
+      ))
+      .sort((a, b) => {
+        const aClass = classifyPrescription(a, true);
+        const bClass = classifyPrescription(b, true);
+        return (GRADE_RANK[bClass.grade] || 0) - (GRADE_RANK[aClass.grade] || 0)
+          || Number(b.improvePct || 0) - Number(a.improvePct || 0);
+      });
+    const primary = directMatches[0] || null;
+    const directMatch = Boolean(directMatches[0]);
+    const classification = classifyPrescription(primary, directMatch);
+    const grade = classification.grade;
+
+    return {
+      id: `prescription-${vulnerability.riskSleeve || vulnerability.rank}`,
+      vulnerability,
+      candidate: primary,
+      grade,
+      gradeLabel: RECOMMENDATION_GRADE_LABELS[grade],
+      benchmarkOnly: classification.benchmarkOnly,
+      directMatch,
+      sourceAssets: vulnerability.sourceHoldings.map((holding) => holding.ticker).filter(Boolean),
+      reason: primary
+        ? (directMatch
+          ? `${primary.hedgeAsset || '후보'}는 ${vulnerability.label} 취약점에 직접 연결된 후보입니다.`
+          : `${primary.hedgeAsset || '후보'}는 직접 처방 근거가 부족해 benchmark로만 표시합니다.`)
+        : '이 취약점에 직접 연결된 헷지 후보가 아직 없습니다.',
+    };
+  });
+};
+
+export const toHedgeMateViewModel = (payload, selectedPortfolio, options = {}) => {
+  const actionPlan = asArray(payload?.hedgeActionPlan);
+  const candidateRows = asArray(payload?.hedgeActionCandidates)
+    .map(normalizeCandidate)
+    .sort((a, b) => b.improvePct - a.improvePct)
+    .slice(0, 40);
+  const decision = payload?.actionPlanDecision || {};
+  const recommendationDecision = payload?.recommendationDecision || {};
+  const dataFreshness = { ...(payload?.dataFreshness || {}) };
+  const summaryData = payload?.portfolioVulnerabilitySummary?.data || payload?.portfolioVulnerabilitySummary || {};
+  const totalVulnerability = toNumber(summaryData.portfolio_total_vulnerability, 0);
+  const topVulnerabilities = asArray(summaryData.risk_sleeves)
+    .map((row, index) => normalizeVulnerability(row, index, totalVulnerability))
+    .filter((row) => row.netVulnerability > 0)
+    .slice(0, 6);
+
+  const selectedTickers = normalizeTickerList(selectedTickerList(selectedPortfolio));
+  const activeTickers = normalizeTickerList(activeTickerList(payload));
+  const activeBundleFingerprint = payload?.activeBundle?.portfolio_input_fingerprint
+    || payload?.manifest?.active_bundle?.portfolio_input_fingerprint
+    || {};
+  const manifestFingerprint = payload?.manifest?.portfolio_input_fingerprint || {};
+  const manifestRunId = payload?.manifest?.active_hedgemate_run || '';
+  const bundleRunId = payload?.activeBundle?.hedgemate_run || payload?.manifest?.active_bundle?.hedgemate_run || '';
+  const activeRunId = bundleRunId || manifestRunId || '';
+  const productStatus = payload?.productStatus || '';
+  const analysisCacheLookup = payload?.analysisCacheLookup || {};
+  const analysisCacheHit = analysisCacheLookup.hit === true || analysisCacheLookup.matched === true;
+  const cacheLookupOk = !analysisCacheLookup.requested || analysisCacheHit;
+  const expectedRunId = options.expectedRunId || '';
+  const expectedFingerprintHash = options.portfolioInputFingerprintHash || '';
+  const hasExpectedRunId = Boolean(expectedRunId);
+  const hasExpectedFingerprintHash = Boolean(expectedFingerprintHash);
+  const integrityFingerprintHash = payload?.activeBundleIntegrity?.portfolioFingerprintHash || '';
+  const activeFingerprintHash = activeBundleFingerprint?.hash || manifestFingerprint?.hash || integrityFingerprintHash || '';
+  const rawFreshnessStatus = payload?.freshnessStatus || dataFreshness.freshnessStatus || '';
+  const marketDataFresh = dataFreshness.marketDataFresh !== false && dataFreshness.freshnessStatus !== 'STALE';
+  const freshnessStatus = rawFreshnessStatus || (marketDataFresh ? 'FRESH' : 'STALE');
+  const displayFreshEnough = freshnessStatus !== 'STALE' && marketDataFresh;
+  const rawDataNeedsRefresh = Boolean(dataFreshness.needsRefresh);
+  if (rawDataNeedsRefresh && displayFreshEnough) {
+    dataFreshness.needsRefresh = false;
+  }
+  const artifactIntegrity = payload?.activeBundleIntegrity || {};
+  const artifactIntegrityOk = Boolean(payload?.activeBundleIntegrity)
+    && artifactIntegrity.ok === true
+    && asArray(artifactIntegrity.missingArtifacts).length === 0;
+  const tickersMatch = payload ? sameSet(new Set(selectedTickers), new Set(activeTickers)) : false;
+  const manifestRunMatches = hasExpectedRunId ? manifestRunId === expectedRunId : Boolean(manifestRunId);
+  const bundleRunMatches = hasExpectedRunId ? bundleRunId === expectedRunId : Boolean(bundleRunId);
+  const runMatches = hasExpectedRunId ? manifestRunMatches && bundleRunMatches : Boolean(activeRunId);
+  const cacheEvidenceOk = cacheLookupOk || (hasExpectedRunId && runMatches);
+  const bundleHashMatches = hasExpectedFingerprintHash ? activeBundleFingerprint?.hash === expectedFingerprintHash : Boolean(activeBundleFingerprint?.hash);
+  const manifestHashMatches = hasExpectedFingerprintHash ? manifestFingerprint?.hash === expectedFingerprintHash : Boolean(manifestFingerprint?.hash || activeBundleFingerprint?.hash);
+  const integrityHashMatches = hasExpectedFingerprintHash ? integrityFingerprintHash === expectedFingerprintHash : Boolean(integrityFingerprintHash || activeBundleFingerprint?.hash);
+  const portfolioHashMatches = bundleHashMatches && manifestHashMatches && integrityHashMatches;
+  const runCompleted = options.runStatus ? options.runStatus === 'completed' : Boolean(activeRunId);
+  const backendAllowsReport = ['ACTION_READY', 'REVIEW_ONLY', 'STALE'].includes(productStatus);
+  const portfolioMatches = Boolean(selectedPortfolio) && tickersMatch && portfolioHashMatches;
+  const officialReportReady = Boolean(selectedPortfolio)
+    && selectedTickers.length > 0
+    && activeTickers.length > 0
+    && tickersMatch
+    && portfolioHashMatches
+    && runMatches
+    && runCompleted
+    && displayFreshEnough
+    && backendAllowsReport
+    && artifactIntegrityOk
+    && cacheEvidenceOk;
+  const hasDisplayableReportData = Boolean(
+    actionPlan.length
+    || candidateRows.length
+    || topVulnerabilities.length
+    || payload?.hedge
+    || payload?.scenario
+  );
+  const reportDisplayReady = officialReportReady || hasDisplayableReportData;
+  const actionCards = actionPlan.map((row, index) => normalizeAction(row, index, decision, reportDisplayReady));
+  const prescriptionRows = buildPrescriptionRows(topVulnerabilities, actionCards);
+  const firstAction = actionCards[0] || null;
+  const secondAction = actionCards[1] || null;
+  const baseMetrics = firstAction?.baseMetrics || { cvar: 0, mdd: 0, beta: 0, stress: 0, sharpe: 0 };
+  const canExecuteAction = Boolean(decision.canExecuteAction) && officialReportReady && productStatus === 'ACTION_READY';
+  const evaluatedCandidateCount = candidateRows.length;
+  const selectedActionCount = actionCards.length;
+  const candidateStatusCounts = candidateRows.reduce((counts, row) => {
+    counts[row.status] = (counts[row.status] || 0) + 1;
+    return counts;
+  }, {});
+  const recommendationGradeCounts = decision.recommendationGradeCounts || decision.recommendation_grade_counts || {};
+  const selectedRecommendationGradeCounts = decision.selectedRecommendationGradeCounts
+    || decision.selected_recommendation_grade_counts
+    || recommendationGradeCounts;
+  const noSelectedActionSummary = reportDisplayReady && !canExecuteAction && selectedActionCount === 0 && evaluatedCandidateCount > 0
+    ? `평가 후보 ${evaluatedCandidateCount}개를 계산했지만 backtest/formal gate를 통과한 최종 선택 액션은 없습니다. 후보 테이블에서 실패 사유를 확인할 수 있습니다.`
+    : '';
+  const portfolioMatchMessage = !selectedPortfolio
+    ? '선택된 프론트 포트폴리오가 없습니다.'
+    : tickersMatch
+      ? '선택 포트폴리오와 저장된 분석 결과의 종목은 일치합니다. 비중 일치 여부는 재분석으로 확인합니다.'
+      : `선택 포트폴리오(${selectedTickers.join(', ') || '-'})와 저장된 분석 결과(${activeTickers.join(', ') || '-'})의 종목 구성이 다릅니다.`;
+  const blockerText = safeKo(asArray(decision.reasonsKo || decision.reasons_ko).join(' ')
+    || decision.whyNoFormalKo
+    || decision.why_no_formal_ko)
+    || '분석은 완료됐지만 실행 추천으로 확정할 만큼의 검증 근거가 아직 부족합니다.';
+  const actionTypeCoverage = normalizeActionTypeCoverage(decision.actionTypeCoverage);
+  const selectedTypeCount = Object.keys(decision.selectedActionTypeCounts || {}).length;
+  const actionDiversityWarning = selectedTypeCount === 1 && actionTypeCoverage.some((item) => item.presentInCandidates && !item.presentInSelected)
+    ? '선택 액션이 특정 유형에 집중되어 있습니다. 후보는 있었지만 취약성 개선 우선순위 때문에 선택 계획에서 제외된 유형이 있습니다.'
+    : '';
+
+  return {
+    raw: options.includeRawPayload ? payload : null,
+    activeRunId,
+    updatedAt: payload?.activeBundle?.generated_at_utc || payload?.manifest?.generated_at_utc || payload?.dataFreshness?.generatedAtUtc || '',
+    productStatus,
+    freshnessStatus,
+    officialReportReady,
+    reportDisplayReady,
+    portfolioMatches,
+    portfolioMatchDetail: {
+      tickersMatch,
+      weightVerified: Boolean(expectedFingerprintHash && portfolioHashMatches),
+      portfolioHashMatches,
+      bundleHashMatches,
+      manifestHashMatches,
+      integrityHashMatches,
+      manifestRunMatches,
+      bundleRunMatches,
+      runMatches,
+      runCompleted,
+      artifactIntegrityOk,
+      cacheLookupOk: cacheEvidenceOk,
+      analysisCacheHit,
+      displayFreshEnough,
+      marketDataFresh,
+      dataNeedsRefresh: rawDataNeedsRefresh,
+      missingArtifacts: asArray(artifactIntegrity.missingArtifacts),
+      selectedTickers,
+      activeTickers,
+      activeFingerprintHash,
+      expectedFingerprintHash,
+      expectedRunId,
+      message: portfolioMatchMessage,
+    },
+    decisionBanner: {
+      canExecuteAction,
+      title: !reportDisplayReady
+        ? '분석 필요'
+        : !officialReportReady
+          ? '저장된 분석 결과 표시 중'
+        : canExecuteAction
+          ? '검증된 액션 플랜이 있습니다'
+          : '분석 완료 · 검토 후보 표시 중',
+      badge: !reportDisplayReady ? '분석 대기' : !officialReportReady ? '검토 필요' : canExecuteAction ? 'ACTION_READY' : 'REVIEW_ONLY',
+      tone: !reportDisplayReady ? 'stale' : canExecuteAction ? 'ready' : 'review',
+      summary: !reportDisplayReady
+        ? '이 포트폴리오에 대한 최신 분석 결과가 없습니다. 분석을 실행해야 리포트를 볼 수 있습니다.'
+        : !officialReportReady
+          ? '선택 포트폴리오와 최신성 조건을 다시 확인해야 하지만, 백엔드에 저장된 분석 결과가 있어 검토용으로 먼저 표시합니다.'
+        : noSelectedActionSummary
+          ? noSelectedActionSummary
+          : safeKo(canExecuteAction
+          ? '백엔드 gate를 통과한 액션 플랜이 있어 최종 확인 단계로 볼 수 있습니다.'
+          : `실행 추천은 아니며, 현재는 검토용 액션 후보입니다. ${blockerText}`),
+      blockers: asArray(decision.blockers).map(safeKo),
+      upgradeRequirements: asArray(decision.upgradeRequirements || decision.upgrade_requirements).map(safeKo),
+      counts: {
+        formal: reportDisplayReady ? (decision.formalActionCount || 0) : 0,
+        formalRecommendations: reportDisplayReady ? (recommendationDecision.formalRecommendationCount || 0) : 0,
+        review: reportDisplayReady ? (decision.reviewActionCount || 0) : 0,
+        fail: reportDisplayReady ? (decision.failActionCount || 0) : 0,
+        noAction: reportDisplayReady ? (decision.noActionCount || 0) : 0,
+        selectedActions: reportDisplayReady ? selectedActionCount : 0,
+        evaluatedCandidates: reportDisplayReady ? evaluatedCandidateCount : 0,
+        failCandidates: reportDisplayReady ? (candidateStatusCounts.FAIL_ACTION || 0) : 0,
+        gradeA: reportDisplayReady ? Number(decision.gradeAActionCount ?? selectedRecommendationGradeCounts.A ?? 0) : 0,
+        gradeB: reportDisplayReady ? Number(decision.gradeBActionCount ?? selectedRecommendationGradeCounts.B ?? 0) : 0,
+        gradeC: reportDisplayReady ? Number(decision.gradeCActionCount ?? selectedRecommendationGradeCounts.C ?? 0) : 0,
+        gradeD: reportDisplayReady ? Number(decision.gradeDActionCount ?? selectedRecommendationGradeCounts.D ?? 0) : 0,
+      },
+      actionTypeCoverage,
+    },
+    portfolioData: {
+      base: baseMetrics,
+      recommended: firstAction?.proposedMetrics || baseMetrics,
+      optimized: secondAction?.proposedMetrics || firstAction?.proposedMetrics || baseMetrics,
+      labels: {
+        base: '현재 포트폴리오',
+        recommended: firstAction ? `검토 액션 1 · ${firstAction.candidateLabel}` : '검토 액션 없음',
+        optimized: secondAction ? `검토 액션 2 · ${secondAction.candidateLabel}` : '추가 액션 없음',
+      },
+      actions: [firstAction, secondAction].filter(Boolean),
+    },
+    actionCards,
+    prescriptionRows,
+    topVulnerabilities,
+    attributionRows: asArray(payload?.portfolioVulnerabilityAttribution)
+      .map(normalizeAttribution)
+      .filter((row) => row.sourceOrOffset === 'source' || row.vulnerabilityContribution > 0)
+      .sort((a, b) => b.vulnerabilityContribution - a.vulnerabilityContribution)
+      .slice(0, 18),
+    candidateRows,
+    warnings: [
+      ...(rawDataNeedsRefresh && displayFreshEnough ? ['시장데이터는 최신이지만 실행 검증 조건 일부가 차단되어 검토 후보로만 표시합니다.'] : []),
+      ...(dataFreshness.needsRefresh ? ['현재 날짜 기준으로 시장데이터 갱신이 필요합니다.'] : []),
+      ...asArray(dataFreshness.reasons).map(safeKo),
+      ...asArray(payload?.staleReasons).map(safeKo),
+      ...asArray(payload?.actionArtifactWarnings).map(safeKo),
+      ...(!cacheEvidenceOk ? ['선택 포트폴리오 기준으로 저장된 분석 캐시를 찾지 못했습니다.'] : []),
+      ...(!portfolioMatches ? ['선택한 포트폴리오와 저장된 분석 결과가 다를 수 있습니다.'] : []),
+      ...(actionDiversityWarning ? [actionDiversityWarning] : []),
+    ],
+  };
+};

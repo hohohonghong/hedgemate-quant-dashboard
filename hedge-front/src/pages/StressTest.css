@@ -1,0 +1,409 @@
+.stress-test-page {
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  animation: fadeIn 0.4s ease-out;
+}
+
+/* Portfolio Selector */
+.portfolio-select-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.5rem;
+}
+
+.portfolio-dropdown {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  outline: none;
+  min-width: 200px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.portfolio-dropdown:focus {
+  border-color: var(--accent-base);
+}
+
+.icon-wrapper {
+  width: 36px;
+  height: 36px;
+  background-color: var(--bg-input);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Header Section */
+.analysis-target-banner {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.target-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.target-icon-box {
+  width: 40px;
+  height: 40px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-light);
+}
+
+.target-text h4 {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--accent-light);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.target-text p {
+  margin: 0.2rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.target-assets {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.asset-pill {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* Main Content Area */
+.macro-simulation-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem;
+}
+
+.mc-badge {
+  color: var(--accent-light);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+  display: block;
+}
+
+.mc-title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.mc-desc {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-bottom: 2.5rem;
+  line-height: 1.6;
+}
+
+/* Scenario Buttons */
+.quick-scenarios {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 3rem;
+  flex-wrap: wrap;
+}
+
+.scenario-btn {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.scenario-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.scenario-btn.active {
+  background-color: rgba(168, 85, 247, 0.1);
+  border-color: var(--accent-base);
+  color: var(--accent-light);
+}
+
+/* Slider Controls */
+.macro-controls {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+}
+
+.control-group {
+  margin-bottom: 2.5rem;
+}
+
+.control-group:last-child {
+  margin-bottom: 0;
+}
+
+.control-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.control-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.control-icon {
+  color: var(--accent-light);
+}
+
+.control-value {
+  color: var(--accent-light);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+/* Slider Custom Styling */
+.mc-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  background-color: var(--border-color);
+  border-radius: 2px;
+  outline: none;
+  margin: 1.25rem 0;
+}
+
+.mc-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background-color: var(--accent-light);
+  border: 3px solid var(--bg-input);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
+  transition: all 0.2s;
+}
+
+.mc-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  background-color: white;
+}
+
+.slider-marks {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+/* Results Display */
+.simulation-results-overlay {
+  margin-top: 2.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  animation: slideUp 0.5s ease-out;
+}
+
+.metric-card {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+}
+
+.metric-label {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.metric-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.metric-unit {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-left: 0.4rem;
+}
+
+.metric-sub {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--accent-light);
+  font-weight: 600;
+}
+
+.metric-card.critical .metric-value {
+  color: #f87171;
+}
+
+.metric-card.positive .metric-value,
+.metric-card.positive .metric-sub {
+  color: #10b981;
+}
+
+/* Asset Breakdown Table */
+.asset-breakdown-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+}
+
+.asset-impact-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.asset-impact-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.asset-impact-table td {
+  padding: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.asset-impact-table tr:last-child td {
+  border-bottom: none;
+}
+
+.text-green { color: #10b981; font-weight: 600; }
+.text-red { color: #f87171; font-weight: 600; }
+
+.metric-sub.status-excellent { color: #10b981; }
+.metric-sub.status-stable { color: #f59e0b; }
+.metric-sub.status-weak { color: #f87171; }
+
+.simulation-loader {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  background: var(--bg-card);
+  padding: 0.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Empty State */
+.empty-state {
+  height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.empty-icon {
+  width: 64px;
+  height: 64px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-light);
+  margin-bottom: 1.5rem;
+}
+
+/* Error Alerts */
+.simulation-error-alert {
+  background-color: rgba(248, 113, 113, 0.05);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+}
+
+.text-red {
+  color: #f87171;
+}
+
+/* Spinner */
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(168, 85, 247, 0.1);
+  border-top-color: var(--accent-light);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

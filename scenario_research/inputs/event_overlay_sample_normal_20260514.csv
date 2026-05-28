@@ -1,0 +1,3 @@
+date,source,title,url_or_ref,event_type,region,affected_assets,direction,severity,novelty,time_horizon,scenario_links,evidence_span,extract_confidence
+2026-05-11,reviewed_fixture,Disinflation and steady growth support risk appetite,local://phase5-wave2/normal-soft-landing,risk_sentiment,global,SPY|QQQ|HYG,risk_on,58,46,weeks,soft_landing_goldilocks,Reviewed fixture: risk appetite and stable growth support a favorable soft-landing diagnosis,82
+2026-05-11,reviewed_fixture,Services demand is slower but not recessionary,local://phase5-wave2/normal-slowdown,growth,global,SPY|IEF,growth_down,44,40,weeks,slowdown_recession_deflation_risk,Reviewed fixture: softer demand is present but below standalone recession stress,74

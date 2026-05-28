@@ -1,0 +1,50 @@
+# Keep the public repo focused on the original source trees.
+프로젝트_공유용/
+프로젝트_공유용.zip
+프로젝트_제출용.zip
+
+# Dependencies and build outputs
+node_modules/
+hedge-front/node_modules/
+dist/
+hedge-front/dist/
+
+# Runtime/generated outputs and market data caches
+output/
+outputs/
+HedgeMate/outputs/
+scenario_research/outputs/
+
+# Local automation/browser profiles
+.codex-*/
+.omx/
+.playwright-cli/
+
+# Python caches and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+HedgeMate/.pytest_cache/
+scenario_research/.pytest_cache/
+
+# Local environment and logs
+.env
+.env.*
+*.local
+*.log
+logs/
+runtime_logs/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Personal/report artifacts
+*.docx
+*.pptx
+*.xlsx
+
+# Stray duplicate copied inside the frontend folder
+hedge-front/HedgeMate/

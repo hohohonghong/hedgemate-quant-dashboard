@@ -1,0 +1,15 @@
+과제 제출을 위해 SFTP서버를 준비해 놓았습니다.
+
+
+
+첨부해드린 pdf파일을 참조하여, 아래 계정 정보로 접속 후 파일을 업로드 및 다운로드 하시면 됩니다.
+
+
+
+Host : www.eyefeet.com
+
+Port : 100
+
+Username : cau_report22
+
+Password : nC7fExr0OPoDlBTc

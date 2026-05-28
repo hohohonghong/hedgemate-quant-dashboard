@@ -1,0 +1,72 @@
+# HedgeMate 데이터 파이프라인 실행 결과
+
+- 실행일(UTC): 2026-05-28T01:58:54.234840+00:00
+- 데이터 버전(data_version): 20260528
+- 분석기간: 2007-01-01 ~ 2026-05-28
+- 기준통화: KRW
+- 대상 티커: 150개
+- 수집 성공 티커: 150개
+- 위기구간(stress) 일수: 269일
+- 위기구간 벤치마크: SPY + ^KS200 (20거래일 -8%)
+- 시나리오 벡터: `scenario_research\outputs\scenario_vectors\current_scenario_vector_final-refresh-20260528.csv`
+- 현재 장세 요약: 현재 장세: 우호적 위험선호장(ACTIVE, us_global, score=63.617751) / 달러강세/원화약세장(ACTIVE, fx_krw, score=56.521013) / 장기금리 부담장(WATCH, us_global, score=52.243315)
+- Active adverse scenario: 달러강세/원화약세장, 장기금리 부담장, 중국·무역분절 충격장
+- raw 재사용 여부(동일 data_version 재실행): NO
+- FX raw 재사용 여부: NO
+
+## DQ 요약(캘린더 기준)
+- PASS: 27
+- WARN: 122
+- FAIL: 1
+- 최소 coverage_ratio_calendar: 0.8496
+
+## 지표 엔진 검증셋
+- PASS: 7
+- FAIL: 0
+- 결측 처리 정책:
+  - vol_annual 최소 관측치: 20
+  - mdd_1y 최소 관측치: 20
+  - var/cvar 최소 관측치: 60
+  - beta 최소 교집합 관측치: 60
+  - downside beta 최소 하락일: 20
+  - corr 최소 관측치: 20
+
+## 헷징 후보 Top 10 (KRW 기준)
+
+| 순위 | 티커 | 버킷 | HES | Corr | CVaR | Stress | Sharpe | LiquidityPenalty | corr_sp500_60d_krw | cvar_95_1y_krw | sharpe_1y_krw_proxy | adv_60 |
+|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 153130.KS | kr_etf | 0.3897 | 0.6801 | 1.0000 | 0.5985 | 0.0000 | 1.0000 | 0.0405 | -0.0002 | -4.4041 | 4050203822.74 |
+| 2 | 261240.KS | kr_etf | 0.3602 | 0.5212 | 0.8172 | 0.6689 | 0.2789 | 1.0000 | 0.2363 | -0.0154 | 0.9117 | 2103080972.50 |
+| 3 | BTC-USD | crypto | 0.3478 | 0.2422 | 0.3358 | 0.8760 | 0.1876 | 0.0000 | 0.5798 | -0.0554 | -0.8284 | 3768802552590504448.00 |
+| 4 | 068270.KS | kr_stock | 0.3356 | 0.9912 | 0.4214 | 0.4616 | 0.2674 | 1.0000 | -0.3425 | -0.0483 | 0.6912 | 115185146943.33 |
+| 5 | 011200.KS | kr_stock | 0.3344 | 0.9609 | 0.4020 | 0.5501 | 0.2244 | 1.0000 | -0.3052 | -0.0499 | -0.1283 | 39881758073.50 |
+| 6 | 055550.KS | kr_stock | 0.3302 | 0.9728 | 0.4970 | 0.2962 | 0.3570 | 1.0000 | -0.3199 | -0.0420 | 2.3992 | 132269813872.83 |
+| 7 | 132030.KS | kr_etf | 0.3294 | 0.7926 | 0.4362 | 0.6462 | 0.2862 | 1.0000 | -0.0980 | -0.0471 | 1.0501 | 6688449669.58 |
+| 8 | 207940.KS | kr_stock | 0.3293 | 1.0000 | 0.3927 | 0.4983 | 0.2100 | 1.0000 | -0.3534 | -0.0507 | -0.4014 | 82217279566.67 |
+| 9 | 017670.KS | kr_stock | 0.3203 | 0.8580 | 0.4168 | 0.4908 | 0.3564 | 1.0000 | -0.1785 | -0.0487 | 2.3881 | 91327053576.38 |
+| 10 | 032830.KS | kr_stock | 0.3051 | 0.8906 | 0.3418 | 0.3213 | 0.5516 | 1.0000 | -0.2186 | -0.0549 | 6.1072 | 107431332650.00 |
+
+## 포트폴리오 입력 분석 요약
+- 입력 파일: `HedgeMate\inputs\portfolio_weights.csv`
+- 입력 제약조건 체크: PASS (합계 100%, 음수 금지, 단일자산 <=50%)
+- 추천 결과 없음: Gate 통과 후보가 없어 참고안을 표시합니다. 리스크 관리가 어렵습니다.
+- 참고안: 참고안(다자산) - 261240.KS + TLT
+- 추천상태 분포: FAIL_GATE 171, REFERENCE_ONLY 42
+
+## 산출 파일
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\raw\raw_market_daily_20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\raw\raw_fx_daily_20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\raw\raw_benchmark_daily_20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\reports\dq_result_hedgemate-refresh-20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\processed\features_summary_hedgemate-refresh-20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\reports\metric_validation_hedgemate-refresh-20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\reports\hes_components_hedgemate-refresh-20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\processed\asset_risk_sensitivity_hedgemate-refresh-20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\reports\asset_sensitivity_summary_hedgemate-refresh-20260528.md`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\processed\asset_scenario_sensitivity_hedgemate-refresh-20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\reports\asset_scenario_sensitivity_summary_hedgemate-refresh-20260528.md`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\reports\asset_scenario_sensitivity_visual_hedgemate-refresh-20260528.html`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\reports\recommendation_status_qa_hedgemate-refresh-20260528.md`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\reports\portfolio_1to1_hedge_hedgemate-refresh-20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\reports\portfolio_multi_hedge_hedgemate-refresh-20260528.csv`
+- `C:\Users\석민\Documents\cau_2026_ss\금융인공지능실습1\HedgeMate\outputs\reports\portfolio_compare_hedgemate-refresh-20260528.csv`
