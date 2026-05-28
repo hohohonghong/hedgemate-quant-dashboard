@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import shutil
 import socket
 import subprocess
 import sys
@@ -76,6 +77,54 @@ def start_process(args, cwd, stdout_path, stderr_path):
     return process
 
 
+def run_checked(args, cwd):
+    print(f"Running: {' '.join(args)}")
+    try:
+        subprocess.run(args, cwd=str(cwd), check=True)
+    except FileNotFoundError as exc:
+        raise SystemExit(f"Required command not found: {args[0]}") from exc
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(f"Command failed with exit code {exc.returncode}: {' '.join(args)}") from exc
+
+
+def find_npm():
+    candidates = ("npm.cmd", "npm") if sys.platform.startswith("win") else ("npm",)
+    for candidate in candidates:
+        path = shutil.which(candidate)
+        if path:
+            return path
+    return None
+
+
+def ensure_frontend_dist(auto_build=True):
+    frontend_dir = ROOT / "hedge-front"
+    dist_index = frontend_dir / "dist" / "index.html"
+    if dist_index.exists():
+        return
+    if not auto_build:
+        raise SystemExit(
+            "hedge-front/dist is missing. Build it first:\n"
+            "  cd hedge-front\n"
+            "  npm ci\n"
+            "  npm run build\n"
+            "  cd .."
+        )
+    if not (frontend_dir / "package.json").exists():
+        raise SystemExit("hedge-front/package.json is missing; cannot build the frontend.")
+    npm = find_npm()
+    if not npm:
+        raise SystemExit("npm is not installed or not on PATH. Install Node.js 18+ and rerun python run.py.")
+
+    print("hedge-front/dist is missing. Building the frontend now...")
+    node_modules = frontend_dir / "node_modules"
+    if not node_modules.exists():
+        install_command = [npm, "ci"] if (frontend_dir / "package-lock.json").exists() else [npm, "install"]
+        run_checked(install_command, cwd=frontend_dir)
+    run_checked([npm, "run", "build"], cwd=frontend_dir)
+    if not dist_index.exists():
+        raise SystemExit("Frontend build finished, but hedge-front/dist/index.html was not created.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run HedgeMate backend and frontend.")
     parser.add_argument("--backend-port", type=int, default=8766)
@@ -87,17 +136,10 @@ def main():
     )
     parser.add_argument("--strict-ports", action="store_true", help="Fail instead of choosing another port.")
     parser.add_argument("--no-browser", action="store_true", help="Do not open the browser automatically.")
+    parser.add_argument("--no-auto-build", action="store_true", help="Fail if hedge-front/dist is missing.")
     args = parser.parse_args()
 
-    dist_index = ROOT / "hedge-front" / "dist" / "index.html"
-    if not dist_index.exists():
-        raise SystemExit(
-            "hedge-front/dist is missing. Build it first:\n"
-            "  cd hedge-front\n"
-            "  npm ci\n"
-            "  npm run build\n"
-            "  cd .."
-        )
+    ensure_frontend_dist(auto_build=not args.no_auto_build)
 
     args.backend_port = choose_port(args.backend_port, strict=args.strict_ports)
     args.frontend_port = choose_port(args.frontend_port, strict=args.strict_ports)

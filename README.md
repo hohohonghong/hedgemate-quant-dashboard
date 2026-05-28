@@ -26,7 +26,6 @@ pip install -r requirements.txt
 
 cd hedge-front
 npm ci
-npm run build
 cd ..
 ```
 
@@ -44,11 +43,15 @@ artifacts.
 
 ## Run
 
-For a built local app:
+For a local app:
 
 ```powershell
 python run.py
 ```
+
+`run.py` starts the backend and frontend together. If `hedge-front/dist` is
+missing, it automatically runs `npm ci` when needed and then `npm run build`
+before starting the frontend on port `5173`.
 
 Open `http://localhost:5173`. Stop both processes with:
 
