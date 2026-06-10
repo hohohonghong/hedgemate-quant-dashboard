@@ -4294,6 +4294,9 @@ def run_scheduled_refresh_cycle(runner=subprocess.run, thread_factory=threading.
 
 
 def scheduler_loop(stop_event, runner=subprocess.run, thread_factory=threading.Thread, interval_seconds=SCHEDULER_INTERVAL_SECONDS):
+    initial_delay = parse_int_env("HEDGEMATE_SCHEDULER_INITIAL_DELAY_SECONDS", interval_seconds)
+    if initial_delay > 0 and stop_event.wait(initial_delay):
+        return
     while not stop_event.is_set():
         try:
             run_scheduled_refresh_cycle(runner=runner, thread_factory=thread_factory)
@@ -4332,6 +4335,16 @@ def scheduler_status_value():
     if SCHEDULER_STATE.get("lastError"):
         return "DEGRADED"
     return "RUNNING" if SCHEDULER_STATE.get("running") else "STOPPED"
+
+
+def parse_int_env(name, default):
+    raw = os.environ.get(name)
+    if raw in (None, ""):
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
 
 
 def run_pipeline_for_request(payload, runner=subprocess.run, status_callback=None):
