@@ -6,6 +6,7 @@ proxies /api requests to the existing local HedgeMate backend.
 """
 
 import os
+import json
 import signal
 import subprocess
 import sys
@@ -20,6 +21,53 @@ PUBLIC_PORT = int(os.environ.get("PORT", "8000"))
 BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8766"))
 NO_STARTUP_REFRESH_VALUES = {"1", "true", "yes", "on"}
 ENABLE_STARTUP_REFRESH_VALUES = {"1", "true", "yes", "on"}
+
+
+def writable_check(path):
+    target = Path(path)
+    result = {"path": str(target), "exists": target.exists(), "writable": False}
+    probe = None
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        probe = target / f".write_check_{os.getpid()}_{int(time.time() * 1000)}.tmp"
+        probe.write_text("ok", encoding="utf-8")
+        result.update({"exists": True, "writable": True})
+    except Exception as exc:
+        result["error"] = str(exc)[:500]
+    finally:
+        if probe:
+            try:
+                probe.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return result
+
+
+def startup_diagnostics():
+    backend_root = ROOT / "HedgeMate"
+    scenario_root = ROOT / "scenario_research"
+    return {
+        "processCwd": os.getcwd(),
+        "deployRoot": str(ROOT),
+        "backendCwd": str(backend_root),
+        "scenarioResearchRoot": str(scenario_root),
+        "publicPort": PUBLIC_PORT,
+        "backendPort": BACKEND_PORT,
+        "writable": {
+            "hedgemateOutputs": writable_check(backend_root / "outputs"),
+            "hedgemateInputs": writable_check(backend_root / "inputs"),
+            "hedgemateRunInputs": writable_check(backend_root / "outputs" / "run_inputs"),
+            "scenarioResearchOutputs": writable_check(scenario_root / "outputs"),
+        },
+    }
+
+
+def log_startup_diagnostics():
+    print(
+        "Bee-cast HedgeMate startup: "
+        + json.dumps(startup_diagnostics(), ensure_ascii=False),
+        flush=True,
+    )
 
 
 def startup_refresh_disabled():
@@ -84,6 +132,7 @@ def main():
     if not dist_index.exists():
         raise SystemExit("Missing hedge-front/dist/index.html. Commit the prebuilt frontend before deploying.")
 
+    log_startup_diagnostics()
     backend_lock = threading.Lock()
     stop_event = threading.Event()
     backend = start_backend()

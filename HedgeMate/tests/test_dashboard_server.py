@@ -3616,6 +3616,38 @@ class DashboardServerTests(unittest.TestCase):
         self.assertIn("active dashboard bundle", str(ctx.exception))
         self.assertEqual(stages, ["running HedgeMate analysis"])
 
+    def test_launch_run_job_exposes_safe_failure_diagnostics(self):
+        class Result:
+            returncode = 2
+            stdout = "warming up\nsecret=stdout-secret\n"
+            stderr = "Traceback\napi_key=stderr-secret\nfatal: scenario_research path missing\n"
+
+        class ImmediateThread:
+            def __init__(self, target, args=(), daemon=None):
+                self.target = target
+                self.args = args
+                self.daemon = daemon
+
+            def start(self):
+                self.target(*self.args)
+
+        def fake_runner(cmd, cwd, capture_output, text, check, timeout=None):
+            return Result()
+
+        job = serve_dashboard.launch_run_job(
+            {"_prepared_request": True, "jobId": "diag-job", "runId": "diag-run", "cmd": ["python", "fake"]},
+            runner=fake_runner,
+            thread_factory=ImmediateThread,
+        )
+
+        self.assertEqual(job["status"], "failed")
+        self.assertIn("fatal: scenario_research path missing", job["error"])
+        self.assertEqual(job["diagnostics"]["returncode"], 2)
+        self.assertIn("[hidden]", job["diagnostics"]["stderrTail"])
+        self.assertIn("[hidden]", job["diagnostics"]["stdoutTail"])
+        self.assertNotIn("stderr-secret", json.dumps(job))
+        self.assertNotIn("stdout-secret", json.dumps(job))
+
     def test_run_pipeline_for_request_updates_active_bundle_when_artifacts_exist(self):
         class Result:
             returncode = 0

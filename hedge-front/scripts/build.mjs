@@ -38,6 +38,7 @@ const result = await build({
       DEV: false,
       PROD: true,
       VITE_HEDGEMATE_API_URL: process.env.VITE_HEDGEMATE_API_URL || '',
+      VITE_YAHOO_API_URL: process.env.VITE_YAHOO_API_URL || '',
     }),
   },
   loader: {

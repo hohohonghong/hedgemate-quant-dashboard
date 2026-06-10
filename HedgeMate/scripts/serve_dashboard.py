@@ -199,6 +199,8 @@ _FX_PRICE_CACHE = {}
 _UNIVERSE_ASSET_CACHE = None
 JOB_TIMEOUT_SECONDS = 15 * 60
 JOB_HEARTBEAT_SECONDS = 20
+DIAGNOSTIC_TEXT_LIMIT = 4000
+DIAGNOSTIC_LINE_LIMIT = 40
 MARKET_REFRESH_JOB_TYPE = "market_data_refresh"
 INTRADAY_NEWS_JOB_TYPE = "intraday_news_overlay"
 MARKET_REFRESH_MODES = {"market_data_only", "portfolio_reanalysis", "full_rebuild", "intraday_nowcast"}
@@ -2829,7 +2831,7 @@ def mark_portfolio_run_failed(prepared_request, error_message):
         run_db_id,
         "FAILED",
         artifact_dir=None,
-        error_message=str(error_message or "analysis failed")[:4000],
+        error_message=sanitize_diagnostic_text(error_message or "analysis failed")[:4000],
         finished=True,
     )
 
@@ -3292,6 +3294,71 @@ def _elapsed_seconds(started_at):
     return max(0, int((datetime.now() - start).total_seconds()))
 
 
+class PipelineExecutionError(RuntimeError):
+    def __init__(self, message, diagnostics=None):
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
+
+
+def sanitize_diagnostic_text(value):
+    text = str(value or "")
+    text = re.sub(
+        r"(?i)\b(token|secret|password|passwd|api[_-]?key|github[_-]?token|webhook[_-]?secret)\b(\s*[:=]\s*)([^\s,;]+)",
+        r"\1\2[hidden]",
+        text,
+    )
+    text = re.sub(r"(?i)(https?://)([^/\s:@]+):([^@\s/]+)@", r"\1[hidden]:[hidden]@", text)
+    return text
+
+
+def tail_diagnostic_text(value, max_chars=DIAGNOSTIC_TEXT_LIMIT, max_lines=DIAGNOSTIC_LINE_LIMIT):
+    text = sanitize_diagnostic_text(value)
+    lines = text.splitlines()
+    if len(lines) > max_lines:
+        text = "\n".join(lines[-max_lines:])
+    if len(text) > max_chars:
+        text = text[-max_chars:]
+    return sanitize_diagnostic_text(text).strip()
+
+
+def diagnostic_summary(stdout="", stderr=""):
+    for text in (stderr, stdout):
+        lines = [line.strip() for line in tail_diagnostic_text(text).splitlines() if line.strip()]
+        if lines:
+            return lines[-1][:500]
+    return ""
+
+
+def subprocess_failure_diagnostics(stage, cmd, completed=None, cwd=None, stdout=None, stderr=None, returncode=None):
+    stdout_tail = tail_diagnostic_text(stdout if stdout is not None else getattr(completed, "stdout", ""))
+    stderr_tail = tail_diagnostic_text(stderr if stderr is not None else getattr(completed, "stderr", ""))
+    code = returncode if returncode is not None else getattr(completed, "returncode", None)
+    summary = diagnostic_summary(stdout_tail, stderr_tail)
+    return {
+        "stage": stage,
+        "returncode": code,
+        "cwd": str(cwd) if cwd else None,
+        "cmd": [sanitize_diagnostic_text(part) for part in cmd],
+        "stdoutTail": stdout_tail,
+        "stderrTail": stderr_tail,
+        "summary": summary,
+    }
+
+
+def raise_subprocess_failure(stage, cmd, completed, cwd, fallback):
+    diagnostics = subprocess_failure_diagnostics(stage, cmd, completed=completed, cwd=cwd)
+    message = f"{stage} failed"
+    if diagnostics.get("returncode") is not None:
+        message += f" (exit {diagnostics['returncode']})"
+    message += f": {diagnostics.get('summary') or fallback}"
+    raise PipelineExecutionError(message, diagnostics=diagnostics)
+
+
+def exception_diagnostics(exc):
+    diagnostics = getattr(exc, "diagnostics", None)
+    return diagnostics if isinstance(diagnostics, dict) else None
+
+
 def _snapshot_run_job(job_id):
     with RUN_JOBS_LOCK:
         job = RUN_JOBS.get(job_id)
@@ -3350,10 +3417,21 @@ def _cleanup_prepared_artifacts(prepared_request):
 def run_subprocess_with_timeout(runner, cmd, **kwargs):
     try:
         return runner(cmd, timeout=JOB_TIMEOUT_SECONDS, **kwargs)
+    except subprocess.TimeoutExpired as exc:
+        diagnostics = subprocess_failure_diagnostics(
+            "subprocess timeout",
+            cmd,
+            cwd=kwargs.get("cwd"),
+            stdout=getattr(exc, "stdout", ""),
+            stderr=getattr(exc, "stderr", ""),
+            returncode=None,
+        )
+        raise PipelineExecutionError(
+            f"subprocess timeout after {JOB_TIMEOUT_SECONDS // 60} minutes",
+            diagnostics=diagnostics,
+        ) from exc
     except TypeError:
         return runner(cmd, **kwargs)
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"분석 제한 시간 {JOB_TIMEOUT_SECONDS // 60}분을 초과했습니다.") from exc
 
 
 def ensure_daily_auxiliary_raw_data(data_version, target_latest_date=None):
@@ -3450,7 +3528,7 @@ def refresh_daily_market_state_outputs(data_version, runner=subprocess.run, targ
         )
         stdout_by_step[f"step{index}"] = completed.stdout
         if completed.returncode != 0:
-            raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "daily market-state refresh failed")
+            raise_subprocess_failure(label, cmd, completed, ROOT.parent, "daily market-state refresh failed")
 
     after = scenario_final_output_status(data_version=data_version, expected_date=target_latest_date)
     return {
@@ -3507,12 +3585,21 @@ def _run_pipeline_job(job_id, prepared_request, runner):
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
     except Exception as exc:
+        diagnostics = exception_diagnostics(exc)
+        if diagnostics:
+            print(
+                "HedgeMate analysis failed: "
+                + json.dumps(diagnostics, ensure_ascii=False),
+                file=sys.stderr,
+                flush=True,
+            )
         mark_portfolio_run_failed(prepared_request, exc)
         _update_run_job(
             job_id,
             status="failed",
             runId=prepared_request.get("runId"),
-            error=str(exc),
+            error=sanitize_diagnostic_text(str(exc)),
+            diagnostics=diagnostics,
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
     finally:
@@ -3551,6 +3638,7 @@ def launch_run_job(payload, runner=subprocess.run, thread_factory=threading.Thre
                     "timeoutSeconds": JOB_TIMEOUT_SECONDS,
                     "runId": cached_entry.get("runId"),
                     "error": None,
+                    "diagnostics": None,
                     "result": {
                         "ok": True,
                         "cached": True,
@@ -3579,6 +3667,7 @@ def launch_run_job(payload, runner=subprocess.run, thread_factory=threading.Thre
             "timeoutSeconds": JOB_TIMEOUT_SECONDS,
             "runId": prepared_request.get("runId"),
             "error": None,
+            "diagnostics": None,
             "result": None,
             "portfolioTickers": prepared_request.get("portfolioTickers") or [],
             "portfolioInputSha256": prepared_request.get("portfolioInputSha256"),
@@ -3682,7 +3771,7 @@ def _run_refresh_market_data_job(job_id, payload, runner):
             check=False,
         )
         if completed.returncode != 0:
-            raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "intraday nowcast refresh failed")
+            raise_subprocess_failure("intraday nowcast refresh", cmd, completed, ROOT.parent, "intraday nowcast refresh failed")
         status = latest_intraday_nowcast_status()
         _update_run_job(
             job_id,
@@ -3903,6 +3992,7 @@ def _run_refresh_market_data_job(job_id, payload, runner):
             check=False,
         )
         if completed.returncode != 0:
+            raise_subprocess_failure("market data refresh pipeline", cmd, completed, ROOT.parent, "market data refresh pipeline failed")
             raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "시장데이터 갱신 pipeline 실패")
         _update_run_job(
             job_id,
@@ -4047,6 +4137,7 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
             "timeoutSeconds": JOB_TIMEOUT_SECONDS,
             "runId": None,
             "error": None,
+            "diagnostics": None,
             "result": None,
             "freshness": freshness,
             "intradayNowcast": intraday_status,
@@ -4122,12 +4213,21 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
             update_refresh_job_record(job_id, "SUCCESS", finished=True)
             record_data_snapshot_for_refresh(job_type, "SUCCESS", payload=payload, result=snapshot.get("result") or snapshot)
         except Exception as exc:
-            update_refresh_job_record(job_id, "FAILED", error_message=str(exc)[:4000], finished=True)
+            diagnostics = exception_diagnostics(exc)
+            if diagnostics:
+                print(
+                    "HedgeMate refresh failed: "
+                    + json.dumps(diagnostics, ensure_ascii=False),
+                    file=sys.stderr,
+                    flush=True,
+                )
+            update_refresh_job_record(job_id, "FAILED", error_message=sanitize_diagnostic_text(exc)[:4000], finished=True)
             _update_run_job(
                 job_id,
                 status="failed",
                 stage="failed",
-                error=str(exc),
+                error=sanitize_diagnostic_text(str(exc)),
+                diagnostics=diagnostics,
                 completedAt=datetime.now().isoformat(timespec="seconds"),
             )
         finally:
@@ -4193,7 +4293,7 @@ def _run_intraday_news_overlay_job(job_id, payload, runner):
         check=False,
     )
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "intraday news overlay refresh failed")
+        raise_subprocess_failure("intraday news overlay refresh", cmd, completed, ROOT.parent, "intraday news overlay refresh failed")
     status = latest_intraday_news_overlay_status()
     top5, _ = load_intraday_news_top5()
     _update_run_job(
@@ -4251,6 +4351,7 @@ def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread
             "timeoutSeconds": JOB_TIMEOUT_SECONDS,
             "runId": None,
             "error": None,
+            "diagnostics": None,
             "result": None,
             "intradayNewsOverlay": status,
             "startedAt": _now_iso(),
@@ -4287,12 +4388,21 @@ def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread
             update_refresh_job_record(job_id, "SUCCESS", finished=True)
             record_data_snapshot_for_refresh(job_type, "SUCCESS", payload=payload, result=snapshot.get("result") or snapshot)
         except Exception as exc:
-            update_refresh_job_record(job_id, "FAILED", error_message=str(exc)[:4000], finished=True)
+            diagnostics = exception_diagnostics(exc)
+            if diagnostics:
+                print(
+                    "HedgeMate intraday news refresh failed: "
+                    + json.dumps(diagnostics, ensure_ascii=False),
+                    file=sys.stderr,
+                    flush=True,
+                )
+            update_refresh_job_record(job_id, "FAILED", error_message=sanitize_diagnostic_text(exc)[:4000], finished=True)
             _update_run_job(
                 job_id,
                 status="failed",
                 stage="failed",
-                error=str(exc),
+                error=sanitize_diagnostic_text(str(exc)),
+                diagnostics=diagnostics,
                 completedAt=datetime.now().isoformat(timespec="seconds"),
             )
         finally:
@@ -4435,7 +4545,7 @@ def run_pipeline_for_request(payload, runner=subprocess.run, status_callback=Non
         check=False,
     )
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "파이프라인 실행 실패")
+        raise_subprocess_failure("running HedgeMate analysis", cmd, completed, ROOT, "pipeline execution failed")
     run_id = extract_run_id_from_stdout(completed.stdout)
     run_id = run_id or prepared_request.get("runId") or (find_available_run_ids()[0] if find_available_run_ids() else None)
     product_bundle_updated = False
@@ -4465,7 +4575,7 @@ def run_pipeline_for_request(payload, runner=subprocess.run, status_callback=Non
                 check=False,
             )
             if followup.returncode != 0:
-                raise RuntimeError(followup.stderr.strip() or followup.stdout.strip() or "product bundle 갱신 실패")
+                raise_subprocess_failure("product bundle update", followup_cmd, followup, ROOT.parent, "product bundle update failed")
         product_bundle_updated = bool(followup_commands)
     if not product_bundle_updated:
         raise RuntimeError(
@@ -7309,6 +7419,136 @@ def load_service_status(selected_portfolio_id=None, selected_portfolio_hash=None
     return status
 
 
+def path_writable_status(path):
+    target = Path(path)
+    status = {
+        "path": str(target),
+        "exists": target.exists(),
+        "writable": False,
+    }
+    probe = None
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        probe = target / f".write_check_{os.getpid()}_{uuid.uuid4().hex}.tmp"
+        probe.write_text("ok", encoding="utf-8")
+        status.update({"exists": True, "writable": True})
+    except Exception as exc:
+        status["error"] = tail_diagnostic_text(str(exc), max_chars=500, max_lines=4)
+    finally:
+        if probe:
+            try:
+                probe.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return status
+
+
+def file_status(path):
+    target = Path(path)
+    payload = {
+        "path": str(target),
+        "exists": target.exists(),
+        "mtimeUtc": None,
+        "sizeBytes": None,
+    }
+    if target.exists():
+        stat = target.stat()
+        payload.update(
+            {
+                "mtimeUtc": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                "sizeBytes": stat.st_size,
+            }
+        )
+    return payload
+
+
+def manifest_run_summary(manifest):
+    manifest = manifest or {}
+    bundle = active_bundle(manifest)
+    return {
+        "activeHedgemateRun": bundle.get("hedgemate_run") or manifest.get("active_hedgemate_run"),
+        "activeScenarioRun": bundle.get("scenario_run") or manifest.get("active_scenario_run"),
+        "activeFinalRun": bundle.get("final_market_state_run") or manifest.get("active_final_run"),
+        "activeBacktestRun": bundle.get("backtest_run") or manifest.get("active_backtest_run"),
+        "dataVersion": bundle.get("data_version") or manifest.get("data_version"),
+        "generatedAtUtc": bundle.get("generated_at_utc") or manifest.get("generated_at_utc"),
+        "freshnessStatus": bundle.get("freshness_status") or manifest.get("freshness_status"),
+    }
+
+
+def safe_database_status():
+    health = database_health()
+    payload = {
+        "ok": bool(health.get("ok")),
+        "status": "CONNECTED" if health.get("ok") else "DISCONNECTED",
+        "kind": health.get("kind"),
+        "database": health.get("database"),
+    }
+    if health.get("fallbackReason"):
+        payload["fallbackReason"] = tail_diagnostic_text(health.get("fallbackReason"), max_chars=500, max_lines=4)
+    if health.get("error"):
+        payload["error"] = tail_diagnostic_text(health.get("error"), max_chars=500, max_lines=4)
+    return payload
+
+
+def runtime_debug_payload():
+    hedgemate_manifest_path = ROOT / "outputs" / "latest_manifest.json"
+    scenario_manifest_path = SCENARIO_OUTPUT_DIR / "latest_manifest.json"
+    hedgemate_manifest = read_json(hedgemate_manifest_path, {}) if hedgemate_manifest_path.exists() else {}
+    scenario_manifest = read_json(scenario_manifest_path, {}) if scenario_manifest_path.exists() else {}
+    hedgemate_runs = find_available_run_ids(ROOT / "outputs" / "processed")
+    scenario_runs = find_scenario_run_ids(SCENARIO_OUTPUT_DIR / "final")
+    return {
+        "process": {
+            "cwd": os.getcwd(),
+            "sysExecutable": sys.executable,
+            "pythonVersion": sys.version.split()[0],
+        },
+        "paths": {
+            "ROOT": str(ROOT),
+            "SCENARIO_RESEARCH_ROOT": str(SCENARIO_RESEARCH_ROOT),
+        },
+        "manifests": {
+            "HEDGEMATE_MANIFEST_PATH": file_status(hedgemate_manifest_path),
+            "SCENARIO_MANIFEST_PATH": file_status(scenario_manifest_path),
+        },
+        "writable": {
+            "hedgemateOutputs": path_writable_status(ROOT / "outputs"),
+            "hedgemateInputs": path_writable_status(ROOT / "inputs"),
+            "hedgemateRunInputs": path_writable_status(ROOT / "outputs" / "run_inputs"),
+            "scenarioResearchOutputs": path_writable_status(SCENARIO_OUTPUT_DIR),
+        },
+        "runs": {
+            "hedgemateManifest": manifest_run_summary(hedgemate_manifest),
+            "scenarioManifest": manifest_run_summary(scenario_manifest),
+            "latestAvailableHedgemateRun": hedgemate_runs[0] if hedgemate_runs else None,
+            "latestAvailableScenarioRun": scenario_runs[0] if scenario_runs else None,
+        },
+        "database": safe_database_status(),
+        "scheduler": {
+            "status": scheduler_status_value(),
+            "enabled": bool(SCHEDULER_STATE.get("enabled")),
+            "running": bool(SCHEDULER_STATE.get("running")),
+            "lastStartedAt": SCHEDULER_STATE.get("lastStartedAt"),
+            "lastCycleAt": SCHEDULER_STATE.get("lastCycleAt"),
+            "lastError": tail_diagnostic_text(SCHEDULER_STATE.get("lastError"), max_chars=500, max_lines=4)
+            if SCHEDULER_STATE.get("lastError")
+            else None,
+        },
+    }
+
+
+def log_runtime_startup_summary():
+    try:
+        print(
+            "HedgeMate runtime startup: "
+            + json.dumps(runtime_debug_payload(), ensure_ascii=False),
+            flush=True,
+        )
+    except Exception as exc:
+        print(f"HedgeMate runtime startup diagnostics failed: {sanitize_diagnostic_text(exc)}", file=sys.stderr, flush=True)
+
+
 def count_by_field(rows, field, default="unknown"):
     counts = {}
     for row in rows or []:
@@ -7492,6 +7732,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             )
             http_status = HTTPStatus.OK if status.get("ok") else HTTPStatus.SERVICE_UNAVAILABLE
             return self._json_response(status, status=http_status)
+        if parsed.path == "/api/debug/runtime":
+            return self._json_response(runtime_debug_payload())
         if parsed.path == "/api/portfolios":
             user = self._require_user()
             if not user:
@@ -7887,6 +8129,7 @@ def main(argv=None):
             "Refusing to expose the dashboard on a non-loopback host without --allow-remote-dashboard."
         )
     persistence_store().init_db()
+    log_runtime_startup_summary()
     server = ThreadingHTTPServer((args.host, args.port), DashboardHandler)
     print(f"HedgeMate dashboard running at http://{args.host}:{args.port}")
     if not args.no_startup_refresh:

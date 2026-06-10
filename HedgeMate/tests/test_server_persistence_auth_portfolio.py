@@ -265,6 +265,49 @@ class ServerPersistenceAuthPortfolioTests(unittest.TestCase):
         self.assertEqual(status["productStatus"], "REVIEW_ONLY")
         self.assertEqual(status["product_mode"], "REVIEW_ONLY")
 
+    def test_runtime_debug_payload_reports_safe_runtime_state(self):
+        scenario_manifest = serve_dashboard.SCENARIO_OUTPUT_DIR / "latest_manifest.json"
+        scenario_manifest.parent.mkdir(parents=True, exist_ok=True)
+        scenario_manifest.write_text(
+            json.dumps(
+                {
+                    "active_scenario_run": "scenario-run",
+                    "active_final_run": "final-run",
+                    "secret": "scenario-secret-value",
+                }
+            ),
+            encoding="utf-8",
+        )
+        product_manifest = self.root / "outputs" / "latest_manifest.json"
+        product_manifest.parent.mkdir(parents=True, exist_ok=True)
+        product_manifest.write_text(
+            json.dumps(
+                {
+                    "active_hedgemate_run": "hedge-run",
+                    "active_backtest_run": "backtest-run",
+                    "active_bundle": {"hedgemate_run": "hedge-run", "scenario_run": "scenario-run"},
+                    "webhookSecret": "product-secret-value",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        payload = serve_dashboard.runtime_debug_payload()
+        serialized = json.dumps(payload)
+
+        self.assertEqual(payload["paths"]["ROOT"], str(self.root))
+        self.assertTrue(payload["manifests"]["HEDGEMATE_MANIFEST_PATH"]["exists"])
+        self.assertTrue(payload["manifests"]["SCENARIO_MANIFEST_PATH"]["exists"])
+        self.assertTrue(payload["writable"]["hedgemateOutputs"]["writable"])
+        self.assertTrue(payload["writable"]["hedgemateRunInputs"]["writable"])
+        self.assertEqual(payload["runs"]["hedgemateManifest"]["activeHedgemateRun"], "hedge-run")
+        self.assertEqual(payload["runs"]["scenarioManifest"]["activeFinalRun"], "final-run")
+        self.assertEqual(payload["database"]["status"], "CONNECTED")
+        self.assertIn(payload["scheduler"]["status"], {"STOPPED", "RUNNING", "DEGRADED"})
+        self.assertNotIn("env", payload)
+        self.assertNotIn("product-secret-value", serialized)
+        self.assertNotIn("scenario-secret-value", serialized)
+
 
 if __name__ == "__main__":
     unittest.main()
