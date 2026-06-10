@@ -219,6 +219,7 @@ SCHEDULER_STATE = {
     "lastCycleAt": None,
     "lastError": None,
 }
+TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
 _PERSISTENCE_STORE = None
 _PERSISTENCE_LOCK = threading.RLock()
 _EPHEMERAL_SESSION_SECRET = secrets.token_hex(32)
@@ -248,6 +249,53 @@ def persistence_store():
         if _PERSISTENCE_STORE is None:
             _PERSISTENCE_STORE = PersistenceStore()
         return _PERSISTENCE_STORE
+
+
+def server_safe_mode():
+    return os.environ.get("HEDGEMATE_SERVER_SAFE_MODE", "").strip().lower() in TRUTHY_ENV_VALUES
+
+
+def server_safe_skip_refresh_job(job_id, job_type, mode, trigger_type, payload=None, status_payload=None):
+    payload = payload or {}
+    status_payload = status_payload or {}
+    started_at = _now_iso()
+    reason = (
+        "Server safe mode skipped this refresh to keep the deployed API responsive. "
+        "Run the heavy refresh from an offline worker or local machine, then redeploy the generated artifacts."
+    )
+    with RUN_JOBS_LOCK:
+        RUN_JOBS[job_id] = {
+            "jobId": job_id,
+            "jobType": MARKET_REFRESH_JOB_TYPE if job_type != REFRESH_JOB_TYPE_NEWS_OVERLAY else INTRADAY_NEWS_JOB_TYPE,
+            "mode": mode,
+            "startupRefresh": bool(payload.get("startupRefresh")),
+            "status": "skipped_latest",
+            "stage": "server_safe_mode",
+            "currentStep": "server safe mode skipped heavy refresh",
+            "estimatedRemainingMessage": "",
+            "lastHeartbeatAt": started_at,
+            "elapsedSeconds": 0,
+            "timeoutSeconds": JOB_TIMEOUT_SECONDS,
+            "runId": None,
+            "error": None,
+            "result": {
+                "ok": True,
+                "skipped": True,
+                "serverSafeMode": True,
+                "mode": mode,
+                "reason": reason,
+                **status_payload,
+            },
+            "freshness": status_payload.get("freshness") or {},
+            "intradayNowcast": status_payload.get("intradayNowcast"),
+            "intradayNewsOverlay": status_payload.get("intradayNewsOverlay"),
+            "startedAt": started_at,
+            "completedAt": started_at,
+        }
+    create_refresh_job_record(job_id, job_type, trigger_type, status="PENDING")
+    update_refresh_job_record(job_id, "SKIPPED_SERVER_SAFE_MODE", finished=True)
+    record_data_snapshot_for_refresh(job_type, "SKIPPED_SERVER_SAFE_MODE", payload=payload, result=_snapshot_run_job(job_id))
+    return _snapshot_run_job(job_id)
 
 
 def reset_persistence_for_tests(database_url=None, sqlite_path=None):
@@ -3958,6 +4006,22 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
         raise ValueError("mode must be one of market_data_only, portfolio_reanalysis, full_rebuild, intraday_nowcast.")
     force = bool(payload.get("force") or payload.get("forceFullRefresh"))
     has_portfolio_context = refresh_payload_has_portfolio_context(payload)
+    if server_safe_mode() and not payload.get("forceServerRefresh"):
+        status_payload = {}
+        if mode == "intraday_nowcast":
+            status_payload["intradayNowcast"] = latest_intraday_nowcast_status()
+        else:
+            freshness = load_data_freshness()
+            status_payload["freshness"] = freshness
+            status_payload["intradayNowcast"] = freshness.get("intradayNowcast")
+        return server_safe_skip_refresh_job(
+            uuid.uuid4().hex,
+            refresh_job_type_for_mode(mode),
+            mode,
+            trigger_type_from_payload(payload),
+            payload=payload,
+            status_payload=status_payload,
+        )
     same_mode_running_job = latest_running_market_refresh_job(mode=mode)
     if same_mode_running_job:
         same_mode_running_job["attachedToExisting"] = True
@@ -4164,6 +4228,15 @@ def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread
     job_id = uuid.uuid4().hex
     job_type = REFRESH_JOB_TYPE_NEWS_OVERLAY
     trigger_type = trigger_type_from_payload(payload)
+    if server_safe_mode() and not payload.get("forceServerRefresh"):
+        return server_safe_skip_refresh_job(
+            job_id,
+            job_type,
+            INTRADAY_NEWS_JOB_TYPE,
+            trigger_type,
+            payload=payload,
+            status_payload={"intradayNewsOverlay": status},
+        )
     with RUN_JOBS_LOCK:
         RUN_JOBS[job_id] = {
             "jobId": job_id,
@@ -7118,6 +7191,7 @@ def load_service_status(selected_portfolio_id=None, selected_portfolio_hash=None
         "service": "HedgeMate dashboard",
         "database": "CONNECTED" if db_health.get("ok") else "DISCONNECTED",
         "databaseDetail": {"kind": db_health.get("kind"), "database": db_health.get("database")},
+        "serverSafeMode": server_safe_mode(),
         "scheduler": scheduler_status_value(),
         "activeScenarioRun": bundle.get("scenario_run") or manifest.get("active_scenario_run"),
         "activeFinalRun": bundle.get("final_market_state_run") or manifest.get("active_final_run"),

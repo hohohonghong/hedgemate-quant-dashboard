@@ -607,8 +607,8 @@ export const ImprovementReport = () => {
         hedgeBudgetKrw,
         maxComboSize: 2,
         useLivePrices: true,
-        forceReanalysis: true,
-        ignoreAnalysisCache: true,
+        forceReanalysis: false,
+        ignoreAnalysisCache: false,
       });
       setLastAnalysisRun((prev) => ({
         ...prev,

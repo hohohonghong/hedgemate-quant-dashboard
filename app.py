@@ -29,6 +29,8 @@ def startup_refresh_disabled():
 
 
 def start_backend():
+    backend_env = os.environ.copy()
+    backend_env.setdefault("HEDGEMATE_SERVER_SAFE_MODE", "1")
     command = [
         sys.executable,
         "scripts/serve_dashboard.py",
@@ -42,6 +44,7 @@ def start_backend():
     return subprocess.Popen(
         command,
         cwd=str(ROOT / "HedgeMate"),
+        env=backend_env,
         stdin=subprocess.DEVNULL,
     )
 
