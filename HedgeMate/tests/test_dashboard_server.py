@@ -129,11 +129,21 @@ class DashboardServerTests(unittest.TestCase):
         serve_dashboard.SCENARIO_NEWS_INTRADAY_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "news_intraday"
         serve_dashboard.SCENARIO_VALIDATION_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "validation"
 
-    def test_deployment_start_backend_keeps_startup_refresh_on_by_default(self):
+    def test_deployment_start_backend_disables_startup_refresh_by_default(self):
         app = self._load_deployment_app()
 
         with mock.patch.object(app.subprocess, "Popen") as popen, \
              mock.patch.dict(app.os.environ, {}, clear=True):
+            app.start_backend()
+
+        command = popen.call_args.args[0]
+        self.assertIn("--no-startup-refresh", command)
+
+    def test_deployment_start_backend_keeps_startup_refresh_when_explicitly_enabled(self):
+        app = self._load_deployment_app()
+
+        with mock.patch.object(app.subprocess, "Popen") as popen, \
+             mock.patch.dict(app.os.environ, {"HEDGEMATE_ENABLE_STARTUP_REFRESH": "1"}, clear=True):
             app.start_backend()
 
         command = popen.call_args.args[0]
