@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import mimetypes
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -11,10 +12,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DIST_DIR = ROOT / "hedge-front" / "dist"
+DEFAULT_CORS_ORIGINS = {
+    "https://hedgemate.eyefeet.com",
+    "https://hedgemate-front.eyefeet.com",
+}
+
+
+def configured_cors_origins():
+    raw = os.environ.get("HEDGEMATE_CORS_ORIGINS", "")
+    values = {item.strip().rstrip("/") for item in raw.split(",") if item.strip()}
+    return DEFAULT_CORS_ORIGINS | values
 
 
 class FrontendHandler(BaseHTTPRequestHandler):
     api_base = "http://127.0.0.1:8766"
+    cors_origins = configured_cors_origins()
 
     def log_message(self, format, *args):
         return
@@ -46,11 +58,24 @@ class FrontendHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(HTTPStatus.NO_CONTENT)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_cors_headers()
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Credentials", "true")
         self.end_headers()
+
+    def cors_origin(self):
+        origin = (self.headers.get("Origin") or "").strip().rstrip("/")
+        if not origin:
+            return None
+        return origin if origin in self.cors_origins else None
+
+    def send_cors_headers(self):
+        origin = self.cors_origin()
+        if not origin:
+            return
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Access-Control-Allow-Credentials", "true")
+        self.send_header("Vary", "Origin")
 
     def proxy_api(self):
         target = self.api_base.rstrip("/") + self.path
@@ -71,6 +96,7 @@ class FrontendHandler(BaseHTTPRequestHandler):
                 payload = response.read()
                 self.send_response(response.status)
                 self.send_header("Content-Type", response.headers.get("Content-Type", "application/json"))
+                self.send_cors_headers()
                 for cookie_value in response.headers.get_all("Set-Cookie", []):
                     self.send_header("Set-Cookie", cookie_value)
                 self.send_header("Content-Length", str(len(payload)))
@@ -80,6 +106,7 @@ class FrontendHandler(BaseHTTPRequestHandler):
             payload = exc.read()
             self.send_response(exc.code)
             self.send_header("Content-Type", exc.headers.get("Content-Type", "application/json"))
+            self.send_cors_headers()
             for cookie_value in exc.headers.get_all("Set-Cookie", []) if exc.headers else []:
                 self.send_header("Set-Cookie", cookie_value)
             self.send_header("Content-Length", str(len(payload)))
@@ -89,6 +116,7 @@ class FrontendHandler(BaseHTTPRequestHandler):
             payload = f'{{"error":"frontend proxy failed: {exc}"}}'.encode("utf-8")
             self.send_response(HTTPStatus.BAD_GATEWAY)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_cors_headers()
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
