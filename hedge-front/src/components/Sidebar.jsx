@@ -2,17 +2,22 @@ import React from 'react';
 import { Activity, FilePlus, BarChart3, Settings, LogOut, Briefcase, ChevronRight, FileBarChart2, Zap } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { usePortfolios } from '../context/PortfolioContext';
-import { useUserProfile } from '../hooks/useUserProfile';
 import './Sidebar.css';
 
 export const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { portfolios } = usePortfolios();
-  const { profile } = useUserProfile();
+  const { portfolios, currentUser, logout } = usePortfolios();
 
   const newCount = portfolios.filter(p => p.status === 'new').length;
-  const userInitial = profile.name?.trim()?.charAt(0)?.toUpperCase() || 'U';
+  const profileName = currentUser?.displayName || currentUser?.email || 'HedgeMate User';
+  const profileEmail = currentUser?.email || '';
+  const userInitial = profileName.trim()?.charAt(0)?.toUpperCase() || 'U';
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/', { replace: true });
+  };
 
   const portfolioFlowItems = [
     { icon: <FilePlus size={18} />, label: '포트폴리오 등록', path: '/register', step: 1, desc: '자산 입력' },
@@ -122,14 +127,14 @@ export const Sidebar = () => {
         <div className="user-badge">
           <div className="user-avatar">{userInitial}</div>
           <div>
-            <div className="text-sm font-medium">{profile.name}</div>
-            <div className="text-xs text-secondary">{profile.email}</div>
+            <div className="text-sm font-medium">{profileName}</div>
+            <div className="text-xs text-secondary">{profileEmail}</div>
           </div>
         </div>
         <button className="bottom-link" onClick={() => navigate('/settings')}>
           <Settings size={16} /> <span>Settings</span>
         </button>
-        <button className="bottom-link text-danger mt-2" onClick={() => navigate('/', { replace: true })}>
+        <button className="bottom-link text-danger mt-2" onClick={handleLogout}>
           <LogOut size={16} /> <span>Logout</span>
         </button>
       </div>

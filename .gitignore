@@ -5,6 +5,10 @@ hedge-front/node_modules/
 # Build outputs
 dist/
 hedge-front/dist/
+!hedge-front/dist/
+!hedge-front/dist/assets/
+!hedge-front/dist/assets/chunks/
+!hedge-front/dist/**
 
 # Runtime and generated analysis outputs
 output/
@@ -23,6 +27,7 @@ __pycache__/
 *.local
 *.log
 logs/
+runtime_logs/
 
 # Editor and OS files
 .vscode/

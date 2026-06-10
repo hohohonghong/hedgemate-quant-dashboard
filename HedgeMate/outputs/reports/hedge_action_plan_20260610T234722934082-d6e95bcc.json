@@ -1,0 +1,574 @@
+{
+  "run_id": "20260610T234722934082-d6e95bcc",
+  "engine_version": "hedge_action_engine_v1",
+  "portfolio_weights": {
+    "AAPL": 38.29319923803064,
+    "MSFT": 21.354217722940945,
+    "GLD": 40.3525830390284
+  },
+  "status_counts": {
+    "FAIL_ACTION": 28,
+    "RESEARCH_ONLY": 2,
+    "REVIEW_ACTION": 3
+  },
+  "action_type_counts": {
+    "ADD_HEDGE": 7,
+    "DE_RISK_CASH": 1,
+    "REPLACE_SLEEVE": 2,
+    "TRIM_AND_HEDGE": 23
+  },
+  "recommendation_grade_counts": {
+    "B": 1,
+    "C": 1,
+    "D": 1
+  },
+  "formal_action_type_counts": {
+    "REVIEW_REQUIRED": 20
+  },
+  "selected_action_type_counts": {
+    "DE_RISK_CASH": 1,
+    "REPLACE_SLEEVE": 1
+  },
+  "selected_recommendation_grade_counts": {
+    "C": 1,
+    "D": 1
+  },
+  "selected_formal_action_type_counts": {},
+  "formal_rebalance_hedge_count": 0,
+  "formal_de_risk_cash_count": 0,
+  "formal_hold_count": 0,
+  "review_required_count": 0,
+  "selected_risk_sleeve_counts": {
+    "rate_shock_growth_duration": 1,
+    "semiconductor_ai_cycle": 1
+  },
+  "action_type_coverage": {
+    "ADD_HEDGE": {
+      "count": 7,
+      "candidate_count": 7,
+      "selected_count": 0,
+      "present": true,
+      "present_in_candidates": true,
+      "present_in_selected": false,
+      "reason_ko": "기존 보유자산을 유지하면서 헷지를 더하는 후보입니다.",
+      "absence_reason_code": "NOT_SELECTED_BY_DIVERSITY_OR_SCORE",
+      "absence_reason_ko": "후보는 있었지만 selected action plan은 top vulnerability 다양성과 개선도 순서를 우선해 다른 액션을 선택했습니다."
+    },
+    "TRIM_AND_HEDGE": {
+      "count": 23,
+      "candidate_count": 23,
+      "selected_count": 0,
+      "present": true,
+      "present_in_candidates": true,
+      "present_in_selected": false,
+      "reason_ko": "취약성 원인 보유자산을 일부 줄이고 헷지를 더하는 후보입니다.",
+      "absence_reason_code": "NOT_SELECTED_BY_DIVERSITY_OR_SCORE",
+      "absence_reason_ko": "후보는 있었지만 selected action plan은 top vulnerability 다양성과 개선도 순서를 우선해 다른 액션을 선택했습니다."
+    },
+    "DE_RISK_CASH": {
+      "count": 1,
+      "candidate_count": 1,
+      "selected_count": 1,
+      "present": true,
+      "present_in_candidates": true,
+      "present_in_selected": true,
+      "reason_ko": "취약 자산을 줄이고 같은 비중을 cash bucket에 둔 대안입니다.",
+      "absence_reason_code": "",
+      "absence_reason_ko": ""
+    },
+    "REPLACE_SLEEVE": {
+      "count": 2,
+      "candidate_count": 2,
+      "selected_count": 1,
+      "present": true,
+      "present_in_candidates": true,
+      "present_in_selected": true,
+      "reason_ko": "위험 sleeve 일부를 방어 proxy로 바꾸는 후보입니다.",
+      "absence_reason_code": "",
+      "absence_reason_ko": ""
+    },
+    "NO_ACTION": {
+      "count": 0,
+      "candidate_count": 0,
+      "selected_count": 0,
+      "present": false,
+      "present_in_candidates": false,
+      "present_in_selected": false,
+      "reason_ko": "모든 취약 sleeve에서 최소 하나 이상의 bounded action 후보가 생성되어 NO_ACTION row가 필요하지 않았습니다.",
+      "absence_reason_code": "NO_VALID_ACTION_TYPE_CANDIDATE",
+      "absence_reason_ko": "모든 취약 sleeve에서 최소 하나 이상의 bounded action 후보가 생성되어 NO_ACTION row가 필요하지 않았습니다."
+    }
+  },
+  "replace_sleeve_decision": {
+    "action_type": "REPLACE_SLEEVE",
+    "candidate_count": 2,
+    "selected_count": 1,
+    "present_in_candidates": true,
+    "present_in_selected": true,
+    "absence_reason_code": "",
+    "absence_reason_ko": ""
+  },
+  "sleeve_selection_coverage": [
+    {
+      "rank": 1,
+      "risk_sleeve": "rate_shock_growth_duration",
+      "risk_sleeve_label_ko": "장기금리·성장주 듀레이션",
+      "net_vulnerability": 0.59880825,
+      "selected_action_count": 1,
+      "selectable_action_count": 1,
+      "candidate_action_count": 9,
+      "selected_action_ids": [
+        "action_009"
+      ],
+      "coverage_status": "SELECTED",
+      "reason_ko": "상위 취약성이라 selected action plan에 최소 1개 액션을 포함했습니다."
+    },
+    {
+      "rank": 2,
+      "risk_sleeve": "recession_liquidity_stress",
+      "risk_sleeve_label_ko": "침체·유동성 스트레스",
+      "net_vulnerability": 0.10671306,
+      "selected_action_count": 0,
+      "selectable_action_count": 1,
+      "candidate_action_count": 12,
+      "selected_action_ids": [],
+      "coverage_status": "ELIGIBLE_NOT_SELECTED",
+      "reason_ko": "실행 가능한 검토 액션은 있었지만 selected action plan의 최대 개수 제한 때문에 제외됐습니다."
+    },
+    {
+      "rank": 3,
+      "risk_sleeve": "semiconductor_ai_cycle",
+      "risk_sleeve_label_ko": "AI·반도체 사이클",
+      "net_vulnerability": 0.04147699,
+      "selected_action_count": 1,
+      "selectable_action_count": 1,
+      "candidate_action_count": 12,
+      "selected_action_ids": [
+        "action_054"
+      ],
+      "coverage_status": "SELECTED",
+      "reason_ko": "상위 취약성이라 selected action plan에 최소 1개 액션을 포함했습니다."
+    }
+  ],
+  "top_vulnerabilities": [
+    {
+      "risk_sleeve": "rate_shock_growth_duration",
+      "risk_sleeve_label_ko": "장기금리·성장주 듀레이션",
+      "scenario_codes": [
+        "higher_for_longer_long_rate_shock"
+      ],
+      "net_vulnerability": 0.59880825,
+      "gross_source": 0.59880825,
+      "gross_offset": 0,
+      "source_holdings": [
+        {
+          "ticker": "AAPL",
+          "contribution": 0.38303518
+        },
+        {
+          "ticker": "MSFT",
+          "contribution": 0.20287514
+        },
+        {
+          "ticker": "GLD",
+          "contribution": 0.01289793
+        }
+      ],
+      "offset_holdings": []
+    },
+    {
+      "risk_sleeve": "recession_liquidity_stress",
+      "risk_sleeve_label_ko": "침체·유동성 스트레스",
+      "scenario_codes": [
+        "acute_global_stress_liquidity_crunch",
+        "slowdown_recession_deflation_risk"
+      ],
+      "net_vulnerability": 0.10671306,
+      "gross_source": 0.17882319,
+      "gross_offset": -0.07211013,
+      "source_holdings": [
+        {
+          "ticker": "AAPL",
+          "contribution": 0.12828834
+        },
+        {
+          "ticker": "MSFT",
+          "contribution": 0.05053485
+        }
+      ],
+      "offset_holdings": [
+        {
+          "ticker": "GLD",
+          "contribution": -0.07211013
+        }
+      ]
+    },
+    {
+      "risk_sleeve": "semiconductor_ai_cycle",
+      "risk_sleeve_label_ko": "AI·반도체 사이클",
+      "scenario_codes": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "net_vulnerability": 0.04147699,
+      "gross_source": 0.08002921,
+      "gross_offset": -0.03855222,
+      "source_holdings": [
+        {
+          "ticker": "AAPL",
+          "contribution": 0.05472249
+        },
+        {
+          "ticker": "MSFT",
+          "contribution": 0.02530672
+        }
+      ],
+      "offset_holdings": [
+        {
+          "ticker": "GLD",
+          "contribution": -0.03855222
+        }
+      ]
+    },
+    {
+      "risk_sleeve": "inflation_energy_shock",
+      "risk_sleeve_label_ko": "물가·에너지 재상승",
+      "scenario_codes": [
+        "stagflation_reinflation_energy_shock"
+      ],
+      "net_vulnerability": 0,
+      "gross_source": 0,
+      "gross_offset": 0,
+      "source_holdings": [],
+      "offset_holdings": []
+    },
+    {
+      "risk_sleeve": "geopolitical_supply_chain",
+      "risk_sleeve_label_ko": "지정학·공급망 충격",
+      "scenario_codes": [
+        "china_trade_fragmentation_shock",
+        "geopolitical_escalation_supply_shock"
+      ],
+      "net_vulnerability": -0.04408878,
+      "gross_source": 0.09541808,
+      "gross_offset": -0.13950686,
+      "source_holdings": [
+        {
+          "ticker": "AAPL",
+          "contribution": 0.0717137
+        },
+        {
+          "ticker": "MSFT",
+          "contribution": 0.02370438
+        }
+      ],
+      "offset_holdings": [
+        {
+          "ticker": "GLD",
+          "contribution": -0.13950686
+        }
+      ]
+    },
+    {
+      "risk_sleeve": "usdkrw_fx_korea",
+      "risk_sleeve_label_ko": "달러강세·원화약세",
+      "scenario_codes": [
+        "usd_strength_krw_weakness"
+      ],
+      "net_vulnerability": -0.15436597,
+      "gross_source": 0,
+      "gross_offset": -0.15436597,
+      "source_holdings": [],
+      "offset_holdings": [
+        {
+          "ticker": "GLD",
+          "contribution": -0.11702926
+        },
+        {
+          "ticker": "AAPL",
+          "contribution": -0.0208403
+        },
+        {
+          "ticker": "MSFT",
+          "contribution": -0.01649641
+        }
+      ]
+    },
+    {
+      "risk_sleeve": "korea_domestic_credit",
+      "risk_sleeve_label_ko": "한국 내수·신용 스트레스",
+      "scenario_codes": [
+        "korea_domestic_financial_stress"
+      ],
+      "net_vulnerability": -0.18685133,
+      "gross_source": 0,
+      "gross_offset": -0.18685133,
+      "source_holdings": [],
+      "offset_holdings": [
+        {
+          "ticker": "GLD",
+          "contribution": -0.07395022
+        },
+        {
+          "ticker": "AAPL",
+          "contribution": -0.0700552
+        },
+        {
+          "ticker": "MSFT",
+          "contribution": -0.04284591
+        }
+      ]
+    }
+  ],
+  "selected_actions": [
+    {
+      "action_id": "action_009",
+      "action_status": "REVIEW_ACTION",
+      "action_type": "DE_RISK_CASH",
+      "formal_action_type": "",
+      "action_family": "REVIEW",
+      "recommendation_grade": "D",
+      "recommendation_grade_label_ko": "D. 참고 benchmark",
+      "recommendation_grade_reason_ko": "방어 성격은 있으나 핵심 취약점 직접 처방으로 보기는 약해 비교 기준으로만 둡니다.",
+      "direct_vulnerability_prescription": "N",
+      "basis_risk_level": "BENCHMARK",
+      "prescription_score": 12.0,
+      "raw_linked_final_score": 0.0,
+      "action_quality_score": 0.184917,
+      "score_driver_source": "action_quality_score",
+      "linked_final_score": 0.184917,
+      "user_display_score": 9,
+      "score_band": "D:0-49",
+      "score_method_version": "grade_banded_final_score_v1",
+      "input_aware_score": "",
+      "direct_vulnerability_match_score": "",
+      "portfolio_vulnerability_tags": "",
+      "candidate_vulnerability_tags": "",
+      "generic_safe_asset_flag": "",
+      "cash_like_flag": "",
+      "benchmark_role_default": "",
+      "max_grade_without_direct_match": "",
+      "formal_gate_name": "formal_de_risk_cash_gate",
+      "formal_gate_status": "FAIL",
+      "formal_gate_blockers": "stress_after_cost_not_improved",
+      "risk_sleeve": "rate_shock_growth_duration",
+      "risk_sleeve_label_ko": "장기금리·성장주 듀레이션",
+      "scenario": "rate_shock_growth_duration",
+      "risk_scenario_codes": "higher_for_longer_long_rate_shock",
+      "source_tickers": "AAPL",
+      "source_asset": "AAPL",
+      "offset_tickers": "",
+      "candidate_tickers": "__CASH__",
+      "hedge_asset": "__CASH__",
+      "candidate_label": "__CASH__",
+      "linked_recommendation_status": "REFERENCE_ONLY",
+      "pre_backtest_linked_recommendation_status": "",
+      "linked_backtest_gate_status": "",
+      "linked_formal_gate_blockers": "",
+      "linked_formal_gate_blocker_summary": "",
+      "linked_target_evaluated_count": "",
+      "linked_target_lags_cash_count": "",
+      "linked_target_bootstrap_robust_count": "",
+      "linked_target_cash_bootstrap_robust_count": "",
+      "formal_gate_source": "",
+      "why_formal_ko": "",
+      "why_review_only_ko": "Action formal gate failed: stress_after_cost_not_improved",
+      "alternatives_compared_json": "{\"alternatives\": [{\"available\": true, \"cvar\": -0.02483634371736864, \"estimated_cost_bps\": 0.0, \"mdd\": -0.18387294305097468, \"name\": \"current\", \"stress\": 0.0005262622892426304, \"turnover_pct\": 0.0, \"why_not_chosen_ko\": \"baseline portfolio\"}, {\"available\": true, \"cvar_delta_after_cost\": 0.00164357, \"estimated_cost_bps\": 25.0, \"mdd_delta_after_cost\": 0.01561274, \"name\": \"trim_hedge\", \"stress_delta_after_cost\": -1.695e-05, \"turnover_pct\": 10.000001, \"why_not_chosen_ko\": \"\"}, {\"available\": true, \"cvar_delta_after_cost\": 0.00164357, \"estimated_cost_bps\": 25.0, \"mdd_delta_after_cost\": 0.01561274, \"name\": \"trim_cash\", \"stress_delta_after_cost\": -1.695e-05, \"turnover_pct\": 10.000001, \"why_not_chosen_ko\": \"cash baseline was compared against the trim+hedge action\"}, {\"available\": true, \"cvar_delta_after_cost\": 0.0, \"estimated_cost_bps\": 0.0, \"mdd_delta_after_cost\": 0.0, \"name\": \"hold\", \"stress_delta_after_cost\": 0.0, \"turnover_pct\": 0.0, \"why_not_chosen_ko\": \"does not reduce the active scenario vulnerability\"}]}",
+      "alternatives_compared_count": 4,
+      "expected_cvar_delta_after_cost": "0.00164357",
+      "expected_mdd_delta_after_cost": "0.01561274",
+      "expected_stress_delta_after_cost": "-1.695e-05",
+      "estimated_cost_bps": "25.0",
+      "implementation_cost_estimate": "0.00025",
+      "liquidity_status": "CASH_BUCKET",
+      "liquidity_pass": "Y",
+      "concentration_pass": "Y",
+      "source_trim_pass": "Y",
+      "risk_sleeve_offset_pass": "N",
+      "cash_baseline_verdict": "CASH_BETTER",
+      "bootstrap_verdict": "ACTION_BOOTSTRAP_PASS",
+      "cash_bootstrap_verdict": "UNCERTAIN",
+      "tax_unknown_warning": "Y",
+      "profile_constraint_snapshot": "{\"concentration_cap_pct\": 50.0, \"max_candidate_weight_pct\": 20.0, \"max_turnover_pct\": 20.0, \"min_existing_kept_pct\": 80.0, \"profile_source\": \"system_default\"}",
+      "scenario_weight": "",
+      "before_sleeve_vulnerability": "0.59880824",
+      "after_sleeve_vulnerability": "0.54879477",
+      "vulnerability_delta": "-0.05001347",
+      "vulnerability_improve_pct": "8.3522",
+      "source_contribution_pct": "63.9662",
+      "contribution_pct": "63.9662",
+      "contribution_pct_of_sleeve": "63.9662",
+      "current_weight": 38.293199,
+      "proposed_weight": 33.293199,
+      "source_current_weight_pct": 38.293199,
+      "source_proposed_weight_pct": 33.293199,
+      "hedge_current_weight_pct": 0.0,
+      "hedge_proposed_weight_pct": 5.0,
+      "base_cvar_95": "-0.02483634371736864",
+      "proposed_cvar_95": "-0.023192772539345305",
+      "cvar_delta": "0.00164357",
+      "base_mdd": "-0.18387294305097468",
+      "proposed_mdd": "-0.1682601984175407",
+      "mdd_delta": "0.01561274",
+      "base_beta_sp500_krw": "0.7825361187040929",
+      "proposed_beta_sp500_krw": "0.7234207132930581",
+      "beta_delta": "-0.05911541",
+      "base_stress_avg_ret_krw": "0.0005262622892426304",
+      "proposed_stress_avg_ret_krw": "0.0005093139781905567",
+      "stress_delta": "-1.695e-05",
+      "base_sharpe_krw_proxy": "1.312400272613588",
+      "proposed_sharpe_krw_proxy": "1.3160718356729217",
+      "sharpe_delta": "0.00367156",
+      "metric_source": "computed_from_action_before_after_weights",
+      "metric_coverage_reason": "",
+      "turnover_pct": "10.000001",
+      "existing_portfolio_kept_pct": "95.0",
+      "max_single_trim_pct": "5.0",
+      "constraint_status": "PASS",
+      "constraint_reasons": "",
+      "action_reason_ko": "장기금리·성장주 듀레이션 취약성을 만든 AAPL에 대해 __CASH__로 DE_RISK_CASH를 적용하면 sleeve 취약도 변화가 -0.0500입니다. 정식 추천 기준은 미달해 검토 후보입니다.",
+      "status_reason_ko": "Action formal gate did not pass. Blockers: stress_after_cost_not_improved. Linked recommendation status is evidence only: REFERENCE_ONLY.",
+      "plain_korean_reason": "__CASH__ 조정은 장기금리·성장주 듀레이션 취약성을 낮추는 검토안이며 전후 지표는 CVaR 개선, MDD 개선, stress 악화으로 확인됩니다.",
+      "expected_effect": "취약성 0.0500 감소; CVaR 0.16%p 개선; MDD 1.56%p 개선; stress 0.00%p 악화; Sharpe 0.00 개선",
+      "rejected_reason_ko": "FORMAL_ACTION excluded by action-level gate: stress_after_cost_not_improved",
+      "can_execute_action": false,
+      "selected_in_action_plan": true,
+      "selection_reason_ko": "hedge/cash 대안 비교에서 현금성 de-risk 후보만 selectable하여 선택했습니다.",
+      "not_selected_reason_ko": "",
+      "before_weights_json": "{\"AAPL\": 38.293199, \"GLD\": 40.352583, \"MSFT\": 21.354218}",
+      "after_weights_json": "{\"AAPL\": 33.293199, \"GLD\": 40.352583, \"MSFT\": 21.354218, \"__CASH__\": 5.0}"
+    },
+    {
+      "action_id": "action_054",
+      "action_status": "REVIEW_ACTION",
+      "action_type": "REPLACE_SLEEVE",
+      "formal_action_type": "",
+      "action_family": "REVIEW",
+      "recommendation_grade": "C",
+      "recommendation_grade_label_ko": "C. 검토 후보",
+      "recommendation_grade_reason_ko": "방향성은 맞지만 공식 처방이라 부르기에는 근거 또는 제약 검증이 부족합니다.",
+      "direct_vulnerability_prescription": "Y",
+      "basis_risk_level": "LOW",
+      "prescription_score": 85.0,
+      "raw_linked_final_score": 0.0,
+      "action_quality_score": 0.732015,
+      "score_driver_source": "action_quality_score",
+      "linked_final_score": 0.732015,
+      "user_display_score": 64,
+      "score_band": "C:50-69",
+      "score_method_version": "grade_banded_final_score_v1",
+      "input_aware_score": "",
+      "direct_vulnerability_match_score": "",
+      "portfolio_vulnerability_tags": "",
+      "candidate_vulnerability_tags": "",
+      "generic_safe_asset_flag": "",
+      "cash_like_flag": "",
+      "benchmark_role_default": "",
+      "max_grade_without_direct_match": "",
+      "formal_gate_name": "formal_rebalance_hedge_gate",
+      "formal_gate_status": "FAIL",
+      "formal_gate_blockers": "linked_recommendation_not_formal|not_trim_and_hedge|stress_after_cost_not_improved",
+      "risk_sleeve": "semiconductor_ai_cycle",
+      "risk_sleeve_label_ko": "AI·반도체 사이클",
+      "scenario": "semiconductor_ai_cycle",
+      "risk_scenario_codes": "semiconductor_ai_cycle_shock",
+      "source_tickers": "AAPL|MSFT",
+      "source_asset": "AAPL",
+      "offset_tickers": "GLD",
+      "candidate_tickers": "PSQ",
+      "hedge_asset": "PSQ",
+      "candidate_label": "PSQ",
+      "linked_recommendation_status": "REFERENCE_ONLY",
+      "pre_backtest_linked_recommendation_status": "",
+      "linked_backtest_gate_status": "",
+      "linked_formal_gate_blockers": "",
+      "linked_formal_gate_blocker_summary": "",
+      "linked_target_evaluated_count": "",
+      "linked_target_lags_cash_count": "",
+      "linked_target_bootstrap_robust_count": "",
+      "linked_target_cash_bootstrap_robust_count": "",
+      "formal_gate_source": "",
+      "why_formal_ko": "",
+      "why_review_only_ko": "Action formal gate failed: linked_recommendation_not_formal, not_trim_and_hedge, stress_after_cost_not_improved",
+      "alternatives_compared_json": "{\"alternatives\": [{\"available\": true, \"cvar\": -0.02483634371736864, \"estimated_cost_bps\": 0.0, \"mdd\": -0.18387294305097468, \"name\": \"current\", \"stress\": 0.0005262622892426304, \"turnover_pct\": 0.0, \"why_not_chosen_ko\": \"baseline portfolio\"}, {\"available\": true, \"cvar_delta_after_cost\": 0.00407618, \"estimated_cost_bps\": 25.0, \"mdd_delta_after_cost\": 0.04517244, \"name\": \"trim_hedge\", \"stress_delta_after_cost\": -1.689e-05, \"turnover_pct\": 20.0, \"why_not_chosen_ko\": \"\"}, {\"available\": true, \"cvar_delta_after_cost\": 0.00310421, \"estimated_cost_bps\": 25.0, \"mdd_delta_after_cost\": 0.02860641, \"name\": \"trim_cash\", \"stress_delta_after_cost\": -8.739e-05, \"turnover_pct\": 20.0, \"why_not_chosen_ko\": \"cash baseline was compared against the trim+hedge action\"}, {\"available\": true, \"cvar_delta_after_cost\": 0.0, \"estimated_cost_bps\": 0.0, \"mdd_delta_after_cost\": 0.0, \"name\": \"hold\", \"stress_delta_after_cost\": 0.0, \"turnover_pct\": 0.0, \"why_not_chosen_ko\": \"does not reduce the active scenario vulnerability\"}]}",
+      "alternatives_compared_count": 4,
+      "expected_cvar_delta_after_cost": "0.00407618",
+      "expected_mdd_delta_after_cost": "0.04517244",
+      "expected_stress_delta_after_cost": "-1.689e-05",
+      "estimated_cost_bps": "25.0",
+      "implementation_cost_estimate": "0.0005",
+      "liquidity_status": "ASSUMED_LIQUID_UNIVERSE",
+      "liquidity_pass": "Y",
+      "concentration_pass": "Y",
+      "source_trim_pass": "Y",
+      "risk_sleeve_offset_pass": "Y",
+      "cash_baseline_verdict": "BEATS_CASH",
+      "bootstrap_verdict": "ACTION_BOOTSTRAP_PASS",
+      "cash_bootstrap_verdict": "UNCERTAIN",
+      "tax_unknown_warning": "Y",
+      "profile_constraint_snapshot": "{\"concentration_cap_pct\": 50.0, \"max_candidate_weight_pct\": 20.0, \"max_turnover_pct\": 20.0, \"min_existing_kept_pct\": 80.0, \"profile_source\": \"system_default\"}",
+      "scenario_weight": "",
+      "before_sleeve_vulnerability": "0.04147699",
+      "after_sleeve_vulnerability": "0.02808906",
+      "vulnerability_delta": "-0.01338792",
+      "vulnerability_improve_pct": "32.278",
+      "source_contribution_pct": "100.0",
+      "contribution_pct": "100.0",
+      "contribution_pct_of_sleeve": "100.0",
+      "current_weight": 38.293199,
+      "proposed_weight": 33.293199,
+      "source_current_weight_pct": 38.293199,
+      "source_proposed_weight_pct": 33.293199,
+      "hedge_current_weight_pct": 0.0,
+      "hedge_proposed_weight_pct": 10.0,
+      "base_cvar_95": "-0.02483634371736864",
+      "proposed_cvar_95": "-0.02076016719145742",
+      "cvar_delta": "0.00407618",
+      "base_mdd": "-0.18387294305097468",
+      "proposed_mdd": "-0.13870050575029502",
+      "mdd_delta": "0.04517244",
+      "base_beta_sp500_krw": "0.7825361187040929",
+      "proposed_beta_sp500_krw": "0.5902869117768919",
+      "beta_delta": "-0.19224921",
+      "base_stress_avg_ret_krw": "0.0005262622892426304",
+      "proposed_stress_avg_ret_krw": "0.0005093764221007322",
+      "stress_delta": "-1.689e-05",
+      "base_sharpe_krw_proxy": "1.312400272613588",
+      "proposed_sharpe_krw_proxy": "1.3695037036237516",
+      "sharpe_delta": "0.05710343",
+      "metric_source": "computed_from_action_before_after_weights",
+      "metric_coverage_reason": "",
+      "turnover_pct": "20.0",
+      "existing_portfolio_kept_pct": "90.0",
+      "max_single_trim_pct": "5.0",
+      "constraint_status": "PASS",
+      "constraint_reasons": "",
+      "action_reason_ko": "AI·반도체 사이클 취약성을 만든 AAPL, MSFT에 대해 PSQ로 위험 sleeve 일부 교체를 적용하면 sleeve 취약도 변화가 -0.0134입니다. 정식 추천 기준은 미달해 검토 후보입니다.",
+      "status_reason_ko": "Action formal gate did not pass. Blockers: linked_recommendation_not_formal|not_trim_and_hedge|stress_after_cost_not_improved. Linked recommendation status is evidence only: REFERENCE_ONLY.",
+      "plain_korean_reason": "PSQ 조정은 AI·반도체 사이클 취약성을 낮추는 검토안이며 전후 지표는 CVaR 개선, MDD 개선, stress 악화으로 확인됩니다.",
+      "expected_effect": "취약성 0.0134 감소; CVaR 0.41%p 개선; MDD 4.52%p 개선; stress 0.00%p 악화; Sharpe 0.06 개선",
+      "rejected_reason_ko": "FORMAL_ACTION excluded by action-level gate: linked_recommendation_not_formal|not_trim_and_hedge|stress_after_cost_not_improved",
+      "can_execute_action": false,
+      "selected_in_action_plan": true,
+      "selection_reason_ko": "취약성 기여가 특정 sleeve에 강하게 집중되어 REPLACE_SLEEVE가 trim 대비 유사하거나 더 큰 개선을 보여 선택했습니다.",
+      "not_selected_reason_ko": "",
+      "before_weights_json": "{\"AAPL\": 38.293199, \"GLD\": 40.352583, \"MSFT\": 21.354218}",
+      "after_weights_json": "{\"AAPL\": 33.293199, \"GLD\": 40.352583, \"MSFT\": 16.354218, \"PSQ\": 10.0}"
+    }
+  ],
+  "selection_policy": {
+    "scope": "SELECTED_ACTIONS_ONLY",
+    "max_selected_actions": 10,
+    "diversity_rule": "select_best_action_per_positive_top_vulnerability_before_global_fill",
+    "count_basis": "selected_actions",
+    "add_hedge_rule": "선두 source 기여도가 낮고 ADD_HEDGE 개선폭이 trim 후보의 55% 이상이면 포트폴리오 유지 원칙 때문에 ADD_HEDGE를 우선할 수 있습니다.",
+    "trim_and_hedge_rule": "선두 source holding이 취약성을 크게 만들면 원인 비중을 줄이고 hedge를 더하는 TRIM_AND_HEDGE를 우선합니다.",
+    "replace_sleeve_rule": "source 기여도가 매우 집중되고 REPLACE_SLEEVE 개선폭이 trim 대비 유사하거나 더 클 때만 선택합니다.",
+    "no_action_rule": "20% turnover, 80% 기존 포트폴리오 유지, 집중도 제한 안에서 유효한 조합이 없을 때만 NO_ACTION으로 남깁니다."
+  },
+  "policy": {
+    "formal_gate_not_weakened": true,
+    "max_turnover_pct": 20.0,
+    "default_trim_pct": 5.0,
+    "min_existing_portfolio_kept_pct": 80.0
+  }
+}

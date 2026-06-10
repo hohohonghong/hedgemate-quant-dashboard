@@ -3,7 +3,7 @@ import { Shield, Rocket, ChevronDown, ChevronUp, Briefcase, AlertCircle, ArrowRi
 import { Button } from '../components/Button';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePortfolios } from '../context/PortfolioContext';
-import { getProductDashboard, pollRunStatus, previewPortfolio, refreshMarketData, runPortfolioAnalysis, toBackendPortfolioRows } from '../services/hedgemateApi';
+import { getHedgeMateStatus, getProductDashboard, pollRunStatus, previewPortfolio, refreshMarketData, runPortfolioAnalysis, toBackendPortfolioRows } from '../services/hedgemateApi';
 import { METRIC_DEFINITIONS, formatMetricDelta, formatMetricValue, toHedgeMateViewModel } from '../services/hedgemateViewModel';
 import './ImprovementReport.css';
 
@@ -128,6 +128,25 @@ const riskToneForRank = (rank) => {
   return { className: 'watch', label: '경계' };
 };
 
+const PRODUCT_STATUS_VALUES = new Set(['READY', 'NEEDS_ANALYSIS', 'REFRESHING', 'STALE', 'ERROR', 'REVIEW_ONLY']);
+
+const normalizeProductUiStatus = (value, fallback = 'NEEDS_ANALYSIS') => {
+  const status = String(value || '').trim().toUpperCase();
+  if (status === 'ACTION_READY') return 'READY';
+  if (status === 'RUNNING' || status === 'QUEUED') return 'REFRESHING';
+  if (status === 'BLOCKED' || status === 'MISMATCHED_PORTFOLIO') return 'ERROR';
+  return PRODUCT_STATUS_VALUES.has(status) ? status : fallback;
+};
+
+const productStatusMessage = (status) => {
+  if (status === 'READY') return 'Latest successful analysis is available for this portfolio.';
+  if (status === 'REFRESHING') return 'Analysis or common data refresh is currently running.';
+  if (status === 'STALE') return 'Saved analysis exists, but common market data should be refreshed.';
+  if (status === 'REVIEW_ONLY') return 'Analysis is available for review, but execution is disabled.';
+  if (status === 'ERROR') return 'The selected portfolio result cannot be displayed safely.';
+  return 'No successful analysis run exists for this portfolio yet.';
+};
+
 const buildCauseSegments = (holdings = []) => {
   const prepared = holdings
     .map((holding, index) => {
@@ -207,10 +226,23 @@ export const ImprovementReport = () => {
     || serviceStatus?.intradayNowcastLatestTimestampKst
   );
   const showMatchedResults = Boolean(reportModel?.reportDisplayReady) && !runState.running;
+  const productUiStatus = runState.running
+    ? 'REFRESHING'
+    : normalizeProductUiStatus(
+      reportModel?.productStatus
+      || dashboardPayload?.productStatus
+      || serviceStatus?.selected_portfolio
+      || serviceStatus?.productStatus,
+    );
+  const productUiMessage = productStatusMessage(productUiStatus);
   const selectedTickers = selectedTickerText(selectedPortfolio);
   const reportBlockReasons = useMemo(() => {
     if (!selectedPortfolio) return ['선택 포트폴리오가 없습니다.'];
     if (!reportModel) return [];
+    const status = normalizeProductUiStatus(reportModel.productStatus);
+    if (!['READY', 'STALE', 'REVIEW_ONLY'].includes(status)) {
+      return [`${status}: ${productStatusMessage(status)}`];
+    }
     const detail = reportModel.portfolioMatchDetail || {};
     const reasons = [];
     if (!detail.runMatches) reasons.push('방금 실행한 runId와 active manifest/bundle runId가 일치하지 않습니다.');
@@ -225,7 +257,7 @@ export const ImprovementReport = () => {
       );
     }
     if (!detail.artifactIntegrityOk) reasons.push('active bundle 필수 artifact가 누락되었습니다.');
-    if (!['ACTION_READY', 'REVIEW_ONLY', 'STALE'].includes(reportModel.productStatus)) reasons.push(`백엔드 productStatus가 ${reportModel.productStatus || 'unknown'}입니다.`);
+    if (!['ACTION_READY', 'READY', 'REVIEW_ONLY', 'STALE'].includes(reportModel.productStatus)) reasons.push(`Backend productStatus is ${reportModel.productStatus || 'unknown'}.`);
     return reasons;
   }, [reportModel, selectedPortfolio]);
   const previewBlocksAnalysis = Boolean(portfolioPreview && portfolioPreview.canRunAnalysis === false);
@@ -250,6 +282,7 @@ export const ImprovementReport = () => {
       ? '최신 데이터로 재분석'
       : '포트폴리오 분석 실행';
   const analysisRequiredBadge = previewBlocksAnalysis ? '비중 조정 필요' : staleAnalysisBundle ? '재분석 필요' : '분석 대기';
+  const displayProductStatus = previewBlocksAnalysis ? 'ERROR' : productUiStatus;
   const analysisRequiredTitle = previewBlocksAnalysis
     ? '단일 자산 비중이 50%를 넘어 분석을 실행할 수 없습니다'
     : staleAnalysisBundle
@@ -290,10 +323,17 @@ export const ImprovementReport = () => {
         signal: requestOptions.signal,
         timeoutMs: requestOptions.timeoutMs ?? 60 * 1000,
       });
+      const statusPayload = await getHedgeMateStatus({
+        portfolio: selectedPortfolio,
+        signal: requestOptions.signal,
+        timeoutMs: requestOptions.timeoutMs ?? 30 * 1000,
+      }).catch(() => null);
       setServiceStatus({
+        ...(statusPayload || {}),
         generatedAtUtc: dashboard?.dataFreshness?.generatedAtUtc || dashboard?.manifest?.generated_at_utc,
         freshnessStatus: dashboard?.dataFreshness?.freshnessStatus || dashboard?.freshnessStatus,
         productStatus: dashboard?.productStatus,
+        selected_portfolio: dashboard?.dataFreshness?.selectedPortfolioStatus || statusPayload?.selected_portfolio,
         marketDataDisplayAsOfKst: dashboard?.dataFreshness?.marketDataDisplayAsOfKst,
         intradayNowcastLatestTimestampKst: dashboard?.dataFreshness?.intradayNowcastLatestTimestampKst,
       });
@@ -668,12 +708,9 @@ export const ImprovementReport = () => {
         if (attempt < 4) await sleep(1500 * attempt);
       }
       if (!matchedDashboardLoaded) {
-        const mismatchSummary = lastMismatchDetail
-          ? ` run=${lastMismatchDetail.runMatches ? 'ok' : 'mismatch'}, hash=${lastMismatchDetail.portfolioHashMatches ? 'ok' : 'mismatch'}, ticker=${lastMismatchDetail.tickersMatch ? 'ok' : 'mismatch'}, artifact=${lastMismatchDetail.artifactIntegrityOk ? 'ok' : 'mismatch'}`
-          : '';
         setRunState((prev) => ({
           ...prev,
-          error: `분석은 끝났지만 방금 생성한 결과를 아직 화면에 표시하지 못했습니다.${mismatchSummary}`,
+          error: `ERROR: ${productStatusMessage('ERROR')}`,
           stage: '',
         }));
       }
@@ -888,7 +925,7 @@ export const ImprovementReport = () => {
       )}
 
       {!isLoading && !runState.running && selectedPortfolio && !showMatchedResults && (
-        <section className="analysis-required-card mt-6" data-analysis-state={analysisRequiredBadge}>
+        <section className="analysis-required-card mt-6" data-analysis-state={displayProductStatus}>
           {staleAnalysisBundle && (
             <div className="status-strip warning mt-4">
               <AlertCircle size={14} />
@@ -896,13 +933,17 @@ export const ImprovementReport = () => {
             </div>
           )}
           <div>
-            <span className="decision-badge">{previewBlocksAnalysis ? '비중 조정 필요' : '분석 대기'}</span>
+            <span className="decision-badge">{displayProductStatus}</span>
             <h3>{previewBlocksAnalysis ? '단일 자산 비중이 50%를 넘어 분석을 실행할 수 없습니다' : '이 포트폴리오에 대한 최신 분석 결과가 없습니다'}</h3>
             <p>
               {previewBlocksAnalysis
                 ? '다종목 포트폴리오는 한 종목 비중이 50%를 넘으면 정식 분석을 막습니다. 비중을 낮추거나 1종목 단일자산 분석으로 분리해 주세요.'
                 : '이 포트폴리오에 대한 최신 분석 결과가 없습니다. 분석을 실행해야 리포트를 볼 수 있습니다.'}
             </p>
+          </div>
+          <div className="status-strip compact mt-4">
+            <Shield size={14} />
+            <span>{displayProductStatus}: {productUiMessage}</span>
           </div>
           <div className="selected-summary-grid mt-5">
             <div>
@@ -919,7 +960,7 @@ export const ImprovementReport = () => {
             </div>
             <div>
               <span>상태</span>
-              <strong>{previewBlocksAnalysis ? '리밸런싱 필요' : (runState.error ? '분석 실패' : reportModel?.productStatus || (previewError ? 'preview 실패' : portfolioPreview?.canRunAnalysis ? '분석 가능' : 'preview 확인 중'))}</strong>
+              <strong>{previewBlocksAnalysis ? 'ERROR' : (runState.error ? 'ERROR' : displayProductStatus)}</strong>
             </div>
           </div>
           {previewBlocksAnalysis && previewBlockReasons.length > 0 && (

@@ -29,29 +29,50 @@ class FrontendHandler(BaseHTTPRequestHandler):
             return self.proxy_api()
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
+    def do_PUT(self):
+        if self.path.startswith("/api/"):
+            return self.proxy_api()
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
+    def do_PATCH(self):
+        if self.path.startswith("/api/"):
+            return self.proxy_api()
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
+    def do_DELETE(self):
+        if self.path.startswith("/api/"):
+            return self.proxy_api()
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
     def do_OPTIONS(self):
         self.send_response(HTTPStatus.NO_CONTENT)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Credentials", "true")
         self.end_headers()
 
     def proxy_api(self):
         target = self.api_base.rstrip("/") + self.path
         body = None
-        if self.command in {"POST", "PUT", "PATCH"}:
+        if self.command in {"POST", "PUT", "PATCH", "DELETE"}:
             length = int(self.headers.get("Content-Length") or "0")
             body = self.rfile.read(length) if length else b""
         headers = {}
         content_type = self.headers.get("Content-Type")
         if content_type:
             headers["Content-Type"] = content_type
+        cookie = self.headers.get("Cookie")
+        if cookie:
+            headers["Cookie"] = cookie
         request = urllib.request.Request(target, data=body, method=self.command, headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 payload = response.read()
                 self.send_response(response.status)
                 self.send_header("Content-Type", response.headers.get("Content-Type", "application/json"))
+                for cookie_value in response.headers.get_all("Set-Cookie", []):
+                    self.send_header("Set-Cookie", cookie_value)
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 self.wfile.write(payload)
@@ -59,6 +80,8 @@ class FrontendHandler(BaseHTTPRequestHandler):
             payload = exc.read()
             self.send_response(exc.code)
             self.send_header("Content-Type", exc.headers.get("Content-Type", "application/json"))
+            for cookie_value in exc.headers.get_all("Set-Cookie", []) if exc.headers else []:
+                self.send_header("Set-Cookie", cookie_value)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)

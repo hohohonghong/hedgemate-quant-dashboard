@@ -78,6 +78,8 @@ export const PortfolioRegistration = () => {
     error: '',
     hasSearched: false,
   });
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const fetchPreferredPrice = async (ticker) => {
     try {
@@ -434,7 +436,7 @@ export const PortfolioRegistration = () => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!portfolioName.trim()) {
       alert('포트폴리오 이름을 입력해주세요.');
       return;
@@ -480,22 +482,32 @@ export const PortfolioRegistration = () => {
       assets,
     };
 
-    let savedPortfolio;
-    if (editPortfolioId && editingPortfolio) {
-      updatePortfolio(editPortfolioId, payload);
-      savedPortfolio = {
-        ...editingPortfolio,
-        ...payload,
-        totalValue,
-        assets: assetsWithWeight,
-        status: 'updated',
-      };
-    } else {
-      savedPortfolio = addPortfolio(payload);
-    }
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      let savedPortfolio;
+      if (editPortfolioId && editingPortfolio) {
+        savedPortfolio = await updatePortfolio(editPortfolioId, {
+          ...payload,
+          totalValue,
+          assets: assetsWithWeight,
+          status: 'updated',
+        });
+      } else {
+        savedPortfolio = await addPortfolio({
+          ...payload,
+          totalValue,
+          assets: assetsWithWeight,
+        });
+      }
 
-    setCreatedPortfolio(savedPortfolio);
-    setShowSuccess(true);
+      setCreatedPortfolio(savedPortfolio);
+      setShowSuccess(true);
+    } catch (error) {
+      setSaveError(error.message || 'Portfolio save failed.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -830,13 +842,20 @@ export const PortfolioRegistration = () => {
         )}
       </div>
 
+      {saveError && (
+        <div className="status-strip error mt-4">
+          <AlertTriangle size={14} />
+          <span>{saveError}</span>
+        </div>
+      )}
+
       <div className="actions flex justify-between items-center">
         <div className="text-sm text-secondary">
           {rows.filter(r=>r.ticker.trim()).length}개 종목 등록됨
         </div>
         <div className="flex gap-4 items-center">
           <Button variant="text" onClick={handleCancel}>취소</Button>
-          <Button variant="primary" onClick={handleSubmit}>
+          <Button variant="primary" onClick={handleSubmit} disabled={isSaving}>
             {editPortfolioId ? '수정 저장' : '포트폴리오 등록'} <ArrowRight size={14} />
           </Button>
         </div>

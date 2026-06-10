@@ -120,6 +120,7 @@ const hedgemateFetch = async (path, options = {}) => {
   const response = await fetch(`${API_BASE}${path}`, {
     ...fetchOptions,
     signal: controller.signal,
+    credentials: 'include',
     headers: {
       ...(fetchOptions.body ? { 'Content-Type': 'application/json' } : {}),
       ...(fetchOptions.headers || {}),
@@ -149,13 +150,88 @@ const hedgemateFetch = async (path, options = {}) => {
 
 export const getHedgeMateHealth = (options = {}) => hedgemateFetch('/health', options);
 
-export const getHedgeMateStatus = (options = {}) => hedgemateFetch('/status', options);
+export const getHedgeMateStatus = (options = {}) => {
+  const {
+    portfolio,
+    portfolioId,
+    portfolioHash,
+    ...requestOptions
+  } = options;
+  const params = new URLSearchParams();
+  const selectedId = portfolioId || serverPortfolioId(portfolio);
+  if (selectedId) params.set('portfolio_id', selectedId);
+  if (portfolioHash || portfolio?.portfolioHash) params.set('portfolio_hash', portfolioHash || portfolio.portfolioHash);
+  const query = params.toString();
+  return hedgemateFetch(`/status${query ? `?${query}` : ''}`, requestOptions);
+};
 
 export const getAssets = (options = {}) => hedgemateFetch('/assets', options);
+
+export const getAuthMe = (options = {}) => hedgemateFetch('/auth/me', options);
+
+export const registerUser = (payload, options = {}) => hedgemateFetch('/auth/register', {
+  method: 'POST',
+  signal: options.signal,
+  timeoutMs: options.timeoutMs,
+  body: JSON.stringify(payload),
+});
+
+export const loginUser = (payload, options = {}) => hedgemateFetch('/auth/login', {
+  method: 'POST',
+  signal: options.signal,
+  timeoutMs: options.timeoutMs,
+  body: JSON.stringify(payload),
+});
+
+export const logoutUser = (options = {}) => hedgemateFetch('/auth/logout', {
+  method: 'POST',
+  signal: options.signal,
+  timeoutMs: options.timeoutMs,
+  body: JSON.stringify({}),
+});
+
+export const listServerPortfolios = (options = {}) => hedgemateFetch('/portfolios', options);
+
+export const createServerPortfolio = (portfolio, options = {}) => hedgemateFetch('/portfolios', {
+  method: 'POST',
+  signal: options.signal,
+  timeoutMs: options.timeoutMs,
+  body: JSON.stringify(portfolio),
+});
+
+export const updateServerPortfolio = (id, portfolio, options = {}) => hedgemateFetch(`/portfolios/${encodeURIComponent(id)}`, {
+  method: 'PUT',
+  signal: options.signal,
+  timeoutMs: options.timeoutMs,
+  body: JSON.stringify(portfolio),
+});
+
+export const deleteServerPortfolio = (id, options = {}) => hedgemateFetch(`/portfolios/${encodeURIComponent(id)}`, {
+  method: 'DELETE',
+  signal: options.signal,
+  timeoutMs: options.timeoutMs,
+});
+
+const serverPortfolioId = (portfolio) => {
+  const id = portfolio?.portfolioId ?? portfolio?.id;
+  return id && /^\d+$/.test(String(id)) ? String(id) : '';
+};
 
 export const getProductDashboard = (options = {}) => {
   const compact = options.compact !== false;
   if (options.portfolio) {
+    const portfolioId = serverPortfolioId(options.portfolio);
+    if (portfolioId) {
+      return hedgemateFetch('/product-dashboard', {
+        method: 'POST',
+        signal: options.signal,
+        timeoutMs: options.timeoutMs,
+        body: JSON.stringify({
+          portfolioId,
+          compact,
+        }),
+      });
+    }
     return hedgemateFetch('/product-dashboard', {
       method: 'POST',
       signal: options.signal,
@@ -224,6 +300,24 @@ export const previewPortfolio = (portfolio, options = {}) => {
 };
 
 export const runPortfolioAnalysis = (portfolio, options = {}) => {
+  const portfolioId = serverPortfolioId(portfolio);
+  if (portfolioId) {
+    return hedgemateFetch(`/portfolios/${encodeURIComponent(portfolioId)}/analyze`, {
+      method: 'POST',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+      body: JSON.stringify({
+        hedgeBudgetKrw: options.hedgeBudgetKrw ?? '',
+        hedgeBudgets: options.hedgeBudgets,
+        maxComboSize: options.maxComboSize ?? 2,
+        dataVersion: options.dataVersion,
+        useLivePrices: options.useLivePrices !== false,
+        forceRefreshRaw: Boolean(options.forceRefreshRaw),
+        forceReanalysis: Boolean(options.forceReanalysis),
+        ignoreAnalysisCache: Boolean(options.ignoreAnalysisCache),
+      }),
+    });
+  }
   return hedgemateFetch('/run', {
     method: 'POST',
     signal: options.signal,

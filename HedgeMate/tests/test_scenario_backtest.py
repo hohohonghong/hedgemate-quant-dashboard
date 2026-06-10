@@ -1,3 +1,4 @@
+import json
 import unittest
 import tempfile
 from datetime import date, timedelta
@@ -90,6 +91,63 @@ class ScenarioBacktestTest(unittest.TestCase):
         finally:
             backtest.OUTPUT_REPORT_DIR = original_dir
         self.assertEqual([row["candidate_ticker"] for row in rows], ["GLD"])
+
+    def test_main_writes_empty_backtest_outputs_when_validation_cases_missing(self):
+        import scripts.run_scenario_backtest as backtest
+
+        original_scenario_root = backtest.SCENARIO_ROOT
+        original_report_dir = backtest.OUTPUT_REPORT_DIR
+        original_validation_dir = backtest.OUTPUT_VALIDATION_DIR
+        original_raw_dir = backtest.RAW_DIR
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                backtest.SCENARIO_ROOT = root / "scenario_research"
+                backtest.OUTPUT_REPORT_DIR = root / "reports"
+                backtest.OUTPUT_VALIDATION_DIR = root / "validation"
+                backtest.RAW_DIR = root / "raw"
+                backtest.OUTPUT_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+                portfolio_input = root / "portfolio_weights.csv"
+                portfolio_input.write_text("ticker,weight_pct\nAAPL,100\n", encoding="utf-8")
+                for name in ("portfolio_1to1_hedge_run.csv", "portfolio_multi_hedge_run.csv"):
+                    (backtest.OUTPUT_REPORT_DIR / name).write_text(
+                        "candidate_ticker,recommendation_status,weights_snapshot\n"
+                        "GLD,PASS_RECOMMEND,\"{\"\"AAPL\"\": 90, \"\"GLD\"\": 10}\"\n",
+                        encoding="utf-8",
+                    )
+
+                exit_code = backtest.main(
+                    [
+                        "--run-id",
+                        "backtest-run",
+                        "--historical-validation-run-id",
+                        "missing-fixture",
+                        "--hedgemate-run-id",
+                        "run",
+                        "--data-version",
+                        "20260610",
+                        "--portfolio-input",
+                        str(portfolio_input),
+                    ]
+                )
+
+                output_csv = backtest.OUTPUT_VALIDATION_DIR / "walk_forward_backtest_backtest-run.csv"
+                summary_md = backtest.OUTPUT_REPORT_DIR / "walk_forward_backtest_summary_backtest-run.md"
+                metadata_json = backtest.OUTPUT_REPORT_DIR / "walk_forward_backtest_metadata_backtest-run.json"
+
+                self.assertEqual(exit_code, 0)
+                self.assertTrue(output_csv.exists())
+                self.assertEqual(len(output_csv.read_text(encoding="utf-8").splitlines()), 1)
+                self.assertIn("Historical validation cases were not available", summary_md.read_text(encoding="utf-8"))
+                metadata = json.loads(metadata_json.read_text(encoding="utf-8"))
+                self.assertTrue(metadata["historical_validation_missing"])
+                self.assertEqual(metadata["row_count"], 0)
+        finally:
+            backtest.SCENARIO_ROOT = original_scenario_root
+            backtest.OUTPUT_REPORT_DIR = original_report_dir
+            backtest.OUTPUT_VALIDATION_DIR = original_validation_dir
+            backtest.RAW_DIR = original_raw_dir
 
     def test_portfolio_returns_treat_cash_as_zero_return_weight(self):
         returns = {"BASE": {"2024-01-02": 0.10, "2024-01-03": -0.10}}

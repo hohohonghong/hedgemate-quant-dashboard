@@ -155,10 +155,21 @@ export const MyPortfolios = () => {
     setDeletingId(id);
   };
 
-  const confirmDelete = (e, id) => {
+  const confirmDelete = async (e, id) => {
     e.stopPropagation();
-    deletePortfolio(id);
-    setDeletingId(null);
+    try {
+      await deletePortfolio(id);
+      setDeletingId(null);
+    } catch (error) {
+      setPreviewById((prev) => ({
+        ...prev,
+        [id]: {
+          ...(prev[id] || {}),
+          loading: false,
+          error: error.message || 'Delete failed.',
+        },
+      }));
+    }
   };
 
   const cancelDelete = (e) => {

@@ -51,6 +51,8 @@ const SAFE_BENCHMARK_TICKERS = new Set([
 
 const GRADE_RANK = { A: 4, B: 3, C: 2, D: 1 };
 const SCORE_METHOD_VERSION = 'grade_banded_final_score_v1';
+const REPORT_READY_STATUSES = new Set(['ACTION_READY', 'READY', 'REVIEW_ONLY', 'STALE']);
+const ACTION_READY_STATUSES = new Set(['ACTION_READY', 'READY']);
 const GRADE_SCORE_BANDS = {
   A: [90, 100],
   B: [70, 89],
@@ -555,6 +557,18 @@ export const toHedgeMateViewModel = (payload, selectedPortfolio, options = {}) =
   const expectedFingerprintHash = options.portfolioInputFingerprintHash || '';
   const hasExpectedRunId = Boolean(expectedRunId);
   const hasExpectedFingerprintHash = Boolean(expectedFingerprintHash);
+  const selectedPortfolioId = selectedPortfolio?.portfolioId || selectedPortfolio?.id || '';
+  const payloadPortfolioId = payload?.selectedPortfolio?.portfolioId
+    || payload?.selectedPortfolio?.id
+    || payload?.portfolioRun?.portfolioId
+    || '';
+  const savedPortfolioRunVerified = Boolean(
+    payload?.serverContractVersion === 'action_contract_v4_portfolio_runs'
+    && selectedPortfolioId
+    && payloadPortfolioId
+    && String(selectedPortfolioId) === String(payloadPortfolioId)
+    && String(payload?.portfolioRun?.status || '').toUpperCase() === 'SUCCESS'
+  );
   const integrityFingerprintHash = payload?.activeBundleIntegrity?.portfolioFingerprintHash || '';
   const activeFingerprintHash = activeBundleFingerprint?.hash || manifestFingerprint?.hash || integrityFingerprintHash || '';
   const rawFreshnessStatus = payload?.freshnessStatus || dataFreshness.freshnessStatus || '';
@@ -574,18 +588,20 @@ export const toHedgeMateViewModel = (payload, selectedPortfolio, options = {}) =
   const tickersMatch = payload ? sameSet(new Set(selectedTickers), new Set(activeTickers)) : false;
   const manifestRunMatches = hasExpectedRunId ? manifestRunId === expectedRunId : Boolean(manifestRunId);
   const bundleRunMatches = hasExpectedRunId ? bundleRunId === expectedRunId : Boolean(bundleRunId);
-  const runMatches = hasExpectedRunId ? manifestRunMatches && bundleRunMatches : Boolean(activeRunId);
+  const runMatches = savedPortfolioRunVerified || (hasExpectedRunId ? manifestRunMatches && bundleRunMatches : Boolean(activeRunId));
   const cacheEvidenceOk = cacheLookupOk || (hasExpectedRunId && runMatches);
-  const bundleHashMatches = hasExpectedFingerprintHash ? activeBundleFingerprint?.hash === expectedFingerprintHash : Boolean(activeBundleFingerprint?.hash);
-  const manifestHashMatches = hasExpectedFingerprintHash ? manifestFingerprint?.hash === expectedFingerprintHash : Boolean(manifestFingerprint?.hash || activeBundleFingerprint?.hash);
-  const integrityHashMatches = hasExpectedFingerprintHash ? integrityFingerprintHash === expectedFingerprintHash : Boolean(integrityFingerprintHash || activeBundleFingerprint?.hash);
+  const bundleHashMatches = savedPortfolioRunVerified || (hasExpectedFingerprintHash ? activeBundleFingerprint?.hash === expectedFingerprintHash : Boolean(activeBundleFingerprint?.hash));
+  const manifestHashMatches = savedPortfolioRunVerified || (hasExpectedFingerprintHash ? manifestFingerprint?.hash === expectedFingerprintHash : Boolean(manifestFingerprint?.hash || activeBundleFingerprint?.hash));
+  const integrityHashMatches = savedPortfolioRunVerified || (hasExpectedFingerprintHash ? integrityFingerprintHash === expectedFingerprintHash : Boolean(integrityFingerprintHash || activeBundleFingerprint?.hash));
   const portfolioHashMatches = bundleHashMatches && manifestHashMatches && integrityHashMatches;
-  const fingerprintMatchVerified = hasExpectedFingerprintHash && portfolioHashMatches;
-  const portfolioIdentityMatches = tickersMatch || fingerprintMatchVerified;
-  const runCompleted = options.runStatus ? options.runStatus === 'completed' : Boolean(activeRunId);
-  const backendAllowsReport = ['ACTION_READY', 'REVIEW_ONLY', 'STALE'].includes(productStatus);
-  const portfolioMatches = Boolean(selectedPortfolio) && portfolioIdentityMatches && portfolioHashMatches;
-  const verifiedSelectedPortfolioResult = Boolean(selectedPortfolio)
+  const fingerprintMatchVerified = savedPortfolioRunVerified || (hasExpectedFingerprintHash && portfolioHashMatches);
+  const portfolioIdentityMatches = savedPortfolioRunVerified || tickersMatch || fingerprintMatchVerified;
+  const runCompleted = savedPortfolioRunVerified || (options.runStatus ? options.runStatus === 'completed' : Boolean(activeRunId));
+  const backendAllowsReport = REPORT_READY_STATUSES.has(productStatus);
+  const portfolioMatches = Boolean(selectedPortfolio) && (savedPortfolioRunVerified || (portfolioIdentityMatches && portfolioHashMatches));
+  const verifiedSelectedPortfolioResult = savedPortfolioRunVerified
+    ? Boolean(selectedPortfolio) && backendAllowsReport && artifactIntegrityOk && runCompleted
+    : Boolean(selectedPortfolio)
     && selectedTickers.length > 0
     && (activeTickers.length > 0 || fingerprintMatchVerified)
     && portfolioIdentityMatches
@@ -611,7 +627,7 @@ export const toHedgeMateViewModel = (payload, selectedPortfolio, options = {}) =
   const firstAction = actionCards[0] || null;
   const secondAction = actionCards[1] || null;
   const baseMetrics = firstAction?.baseMetrics || { cvar: 0, mdd: 0, beta: 0, stress: 0, sharpe: 0 };
-  const canExecuteAction = Boolean(decision.canExecuteAction) && officialReportReady && productStatus === 'ACTION_READY';
+  const canExecuteAction = Boolean(decision.canExecuteAction) && officialReportReady && ACTION_READY_STATUSES.has(productStatus);
   const evaluatedCandidateCount = candidateRows.length;
   const selectedActionCount = actionCards.length;
   const candidateStatusCounts = candidateRows.reduce((counts, row) => {
@@ -660,6 +676,7 @@ export const toHedgeMateViewModel = (payload, selectedPortfolio, options = {}) =
     reportDisplayReady,
     portfolioMatches,
     portfolioMatchDetail: {
+      savedPortfolioRunVerified,
       tickersMatch,
       fingerprintMatchVerified,
       portfolioIdentityMatches,
@@ -695,7 +712,7 @@ export const toHedgeMateViewModel = (payload, selectedPortfolio, options = {}) =
         : canExecuteAction
           ? '검증된 액션 플랜이 있습니다'
           : '분석 완료 · 검토 후보 표시 중',
-      badge: !reportDisplayReady ? '분석 대기' : !officialReportReady ? '검토 필요' : canExecuteAction ? 'ACTION_READY' : 'REVIEW_ONLY',
+      badge: !reportDisplayReady ? (productStatus || 'NEEDS_ANALYSIS') : !officialReportReady ? 'REVIEW_ONLY' : canExecuteAction ? 'READY' : 'REVIEW_ONLY',
       tone: !reportDisplayReady ? 'stale' : canExecuteAction ? 'ready' : 'review',
       summary: !reportDisplayReady
         ? '이 포트폴리오에 대한 최신 분석 결과가 없습니다. 분석을 실행해야 리포트를 볼 수 있습니다.'

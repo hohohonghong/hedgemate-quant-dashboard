@@ -3,14 +3,40 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Rocket, Activity, ChevronRight, TrendingDown } from 'lucide-react';
 import './Onboarding.css';
 import { Button } from '../components/Button';
+import { usePortfolios } from '../context/PortfolioContext';
 
 export const Onboarding = () => {
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
+  const { currentUser, authLoading, login, register } = usePortfolios();
+  const [authMode, setAuthMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleAuthSubmit = async (event) => {
+    event.preventDefault();
+    setAuthError('');
+    setSubmitting(true);
+    try {
+      if (authMode === 'register') {
+        await register({ email, password, displayName });
+      } else {
+        await login({ email, password });
+      }
+      navigate('/portfolios', { replace: true });
+    } catch (error) {
+      setAuthError(error.message || 'Authentication failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className={`onboarding-container ${mounted ? 'is-mounted' : ''}`}>
@@ -29,7 +55,7 @@ export const Onboarding = () => {
             </div>
             <span className="logo-text">HedgeMate</span>
           </div>
-          <Button variant="secondary" onClick={() => navigate('/register')}>
+          <Button variant="secondary" onClick={() => navigate(currentUser ? '/portfolios' : '/')}>
             앱으로 돌아가기
           </Button>
         </header>
@@ -46,10 +72,58 @@ export const Onboarding = () => {
           </p>
           
           <div className="ob-hero-actions">
-            <button className="ob-btn-primary group" onClick={() => navigate('/register')}>
+            {!currentUser && (
+              <form onSubmit={handleAuthSubmit} style={{ width: 'min(420px, 100%)' }}>
+                <div style={{ display: 'grid', gap: '0.75rem' }}>
+                  {authMode === 'register' && (
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(event) => setDisplayName(event.target.value)}
+                      placeholder="Display name"
+                      autoComplete="name"
+                    />
+                  )}
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="Email"
+                    autoComplete="email"
+                    required
+                  />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="Password"
+                    autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
+                    required
+                  />
+                </div>
+                {authError && <p style={{ color: '#fb7185', marginTop: '0.75rem' }}>{authError}</p>}
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                  <button className="ob-btn-primary group" type="submit" disabled={authLoading || submitting}>
+                    {authMode === 'register' ? 'Create account' : 'Sign in'}
+                    <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                  </button>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => {
+                      setAuthMode((mode) => (mode === 'register' ? 'login' : 'register'));
+                      setAuthError('');
+                    }}
+                  >
+                    {authMode === 'register' ? 'Use existing account' : 'Create account'}
+                  </Button>
+                </div>
+              </form>
+            )}
+            {currentUser && <button className="ob-btn-primary group" onClick={() => navigate('/portfolios')}>
               지금 시작하기
               <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
-            </button>
+            </button>}
           </div>
         </section>
 

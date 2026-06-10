@@ -1,0 +1,121 @@
+{
+  "runId": "intraday-news-refresh-20260610T235708",
+  "items": [
+    {
+      "date": "2026-06-10",
+      "source": "연합인포맥스",
+      "sourceKo": "연합인포맥스",
+      "title": "美물가 다시 고개 드나…5월 CPI, 4%대 전망 - 연합인포맥스",
+      "displayTitleKo": "美물가 다시 고개 드나…5월 CPI, 4%대 전망 - 연합인포맥스",
+      "url": "https://news.google.com/rss/articles/CBMicEFVX3lxTE1JMFE0ZE5aVzJoTmhVOHNwTENpdjZYbFlua3poRi0wRjZBLTJuMDVULXh4MGJGZVliLVpuUG8tUjk0TXhMVjFvZDA2aWJLWkZJOGthZlBybF9ibmZQR2t6MVNYOW05N2JlNFh3M1hpVFA?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 65.12241,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock",
+        "stagflation_reinflation_energy_shock"
+      ],
+      "evidenceSpan": "美물가 다시 고개 드나…5월 CPI, 4%대 전망 연합인포맥스",
+      "displaySummaryKo": "美물가 다시 고개 드나…5월 CPI, 4%대 전망 연합인포맥스",
+      "confidence": 65.0,
+      "needsReview": false
+    },
+    {
+      "date": "2026-06-10",
+      "source": "한국경제",
+      "sourceKo": "한국경제",
+      "title": "\"반도체 훈풍 왜 정규직만\"…민주노총, 대기업 '성과급 잔치' 직격 - 한국경제",
+      "displayTitleKo": "\"반도체 훈풍 왜 정규직만\"…민주노총, 대기업 '성과급 잔치' 직격 - 한국경제",
+      "url": "https://news.google.com/rss/articles/CBMiWkFVX3lxTE9Hb0tVY0RXZGZZWGJkc0F6cVFaNzA4QUxyeXBqaURzak8wLWpJalZQWTVqMlJtUVp5YWt1NEtVLUdsbVR1S2ZrQ0Z6NGFhMERLSUxfbm1ETG9Rd9IBVEFVX3lxTE02S0JqT2Y3ZXdpQjk1dWlWSy1FVzdjMFI2NTZ2cV9YbjlWcE00RmlMOEx6cW9sSkt1MXdKd09yREhYOWhHanNrOXFubG9uNGYxQ0JmNQ?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 64.16241,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "\"반도체 훈풍 왜 정규직만\"…민주노총, 대기업 '성과급 잔치' 직격 한국경제",
+      "displaySummaryKo": "\"반도체 훈풍 왜 정규직만\"…민주노총, 대기업 '성과급 잔치' 직격 한국경제",
+      "confidence": 65.0,
+      "needsReview": false
+    },
+    {
+      "date": "2026-06-10",
+      "source": "이데일리",
+      "sourceKo": "이데일리",
+      "title": "광범위한 수요로 글로벌 반도체 산업 대폭 확장…마이크론, TSMC 등 최선호-UBS - 이데일리",
+      "displayTitleKo": "광범위한 수요로 글로벌 반도체 산업 대폭 확장…마이크론, TSMC 등 최선호-UBS - 이데일리",
+      "url": "https://news.google.com/rss/articles/CBMigAFBVV95cUxPenh3UThzOHR0UnpZcVVyOXQ1RndGcWVxWlhwbTRDNVhOTDhEZXlneC0xX28wZjlSc0lRWEJqOEdpRVdod2xDQmhGVnJobE1yZ2lVdTRzNWdTMUNPcGFMRjNoNkp4aUpVSk1zNHE0WTJNeE13U2tnS0NpRlJnRExMcQ?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 62.937618,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "광범위한 수요로 글로벌 반도체 산업 대폭 확장…마이크론, TSMC 등 최선호-UBS 이데일리",
+      "displaySummaryKo": "광범위한 수요로 글로벌 반도체 산업 대폭 확장…마이크론, TSMC 등 최선호-UBS 이데일리",
+      "confidence": 65.0,
+      "needsReview": false
+    },
+    {
+      "date": "2026-06-10",
+      "source": "이데일리",
+      "sourceKo": "이데일리",
+      "title": "하락 방어 움직임 커졌다…“코스피 추가 하락 경고등” - 이데일리",
+      "displayTitleKo": "하락 방어 움직임 커졌다…“코스피 추가 하락 경고등” - 이데일리",
+      "url": "https://news.google.com/rss/articles/CBMigAFBVV95cUxON2ZRQWcxN0JHSjhDeTBqZkt0VUdzeDVWTFlLZDdwakdrWVZNRjB6Y0Y1TTFabGZFZUtqSW5jUWpFaTJFdjV6ejBYNDV2TnBKWFI2YUpzOVk2SEh1cUZKN21IdXRFTnNtekl6TlUya2xsRnl0NXNtbmMtZWVqVF9Fbg?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 60.32116,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "하락 방어 움직임 커졌다…“코스피 추가 하락 경고등” 이데일리",
+      "displaySummaryKo": "하락 방어 움직임 커졌다…“코스피 추가 하락 경고등” 이데일리",
+      "confidence": 65.0,
+      "needsReview": false
+    },
+    {
+      "date": "2026-06-10",
+      "source": "서울경제",
+      "sourceKo": "서울경제",
+      "title": "예측불허 반도체…피크아웃 전략 짠다 - 서울경제",
+      "displayTitleKo": "예측불허 반도체…피크아웃 전략 짠다 - 서울경제",
+      "url": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE8wWU01aVQ1TS1IZnNtZ3NsRzlFdDNiaXJoeS1vYklfMjM2RmVfd0N2b2NOc2pvUzFQSFUzUm9OY29aeWpJdXh5cFVQdXZ5eGdPQlHSAVNBVV95cUxPWU80NzlnMGwyV0JuQmFURXdfelJ3Ul9pYTJMVFNZTHlZa1N6V0ZqRE04V1pUM3Zpb0p4TkFOa084SlFRTGNXU3JDd2k3b1BEUUpaSQ?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 59.908035,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "예측불허 반도체…피크아웃 전략 짠다 서울경제",
+      "displaySummaryKo": "예측불허 반도체…피크아웃 전략 짠다 서울경제",
+      "confidence": 65.0,
+      "needsReview": false
+    }
+  ]
+}

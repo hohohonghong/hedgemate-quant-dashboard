@@ -1,15 +1,29 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { getTickerQuote } from '../services/yahooFinance';
+import {
+  createServerPortfolio,
+  deleteServerPortfolio,
+  getAuthMe,
+  listServerPortfolios,
+  loginUser,
+  logoutUser,
+  registerUser,
+  updateServerPortfolio,
+} from '../services/hedgemateApi';
 import { isKoreanTicker, normalizeTickerSymbol } from '../utils/helpers';
 
 const PortfolioContext = createContext();
 
-const STORAGE_KEY = 'hedgemate_portfolios';
-
-const DEFAULT_PORTFOLIOS = [];
+const isServerPortfolioId = (id) => /^\d+$/.test(String(id || ''));
 
 export const PortfolioProvider = ({ children }) => {
   const [usdKrwRate, setUsdKrwRate] = useState(1380);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
+  const [portfolios, setPortfolios] = useState([]);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioError, setPortfolioError] = useState('');
 
   useEffect(() => {
     const fetchRate = async () => {
@@ -17,52 +31,83 @@ export const PortfolioProvider = ({ children }) => {
         const quote = await getTickerQuote('USDKRW=X');
         if (quote && quote.price) {
           setUsdKrwRate(quote.price);
-          console.log('Fetched dynamic USD/KRW rate:', quote.price);
         }
-      } catch (e) {
-        console.error('Error fetching USDKRW=X rate, using fallback:', e);
+      } catch (error) {
+        console.error('Error fetching USDKRW=X rate, using fallback:', error);
       }
     };
     fetchRate();
   }, []);
 
-  const [portfolios, setPortfolios] = useState(() => {
+  const loadPortfolios = async () => {
+    setPortfolioLoading(true);
+    setPortfolioError('');
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (e) {
-      console.error('Failed to load portfolios from storage', e);
+      const payload = await listServerPortfolios();
+      const nextPortfolios = Array.isArray(payload?.portfolios) ? payload.portfolios : [];
+      setPortfolios(nextPortfolios);
+      return nextPortfolios;
+    } catch (error) {
+      setPortfolioError(error.message || 'Failed to load portfolios.');
+      setPortfolios([]);
+      return [];
+    } finally {
+      setPortfolioLoading(false);
     }
-    return DEFAULT_PORTFOLIOS;
-  });
+  };
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(portfolios));
-    } catch (e) {
-      console.error('Failed to save portfolios to storage', e);
-    }
-  }, [portfolios]);
+    let cancelled = false;
+    const bootstrap = async () => {
+      setAuthLoading(true);
+      setAuthError('');
+      try {
+        const payload = await getAuthMe();
+        if (cancelled) return;
+        if (payload?.authenticated && payload.user) {
+          setCurrentUser(payload.user);
+          await loadPortfolios();
+        } else {
+          setCurrentUser(null);
+          setPortfolios([]);
+        }
+      } catch {
+        if (!cancelled) {
+          setCurrentUser(null);
+          setPortfolios([]);
+        }
+      } finally {
+        if (!cancelled) setAuthLoading(false);
+      }
+    };
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const buildPortfolioRecord = (portfolio, base = {}) => {
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    
-    const getValInKRW = (a) => {
-      const isUSD = a.currency === 'USD' || (!a.currency && !isKoreanTicker(a.ticker));
+
+    const getValInKRW = (asset) => {
+      const isUSD = asset.currency === 'USD' || (!asset.currency && !isKoreanTicker(asset.ticker));
       const rate = isUSD ? usdKrwRate : 1;
-      return a.qty * a.cost * rate;
+      return Number(asset.qty || asset.quantity || 0) * Number(asset.cost || asset.price || 0) * rate;
     };
 
-    const totalValue = portfolio.assets.reduce((sum, a) => sum + getValInKRW(a), 0);
-    const assetsWithWeight = portfolio.assets.map(a => {
-      const valInKRW = getValInKRW(a);
-      const weightPct = totalValue > 0 ? (valInKRW / totalValue) * 100 : 0;
+    const assets = Array.isArray(portfolio.assets) ? portfolio.assets : [];
+    const totalValue = Number(portfolio.totalValue ?? portfolio.totalValueKrw)
+      || assets.reduce((sum, asset) => sum + getValInKRW(asset), 0);
+    const assetsWithWeight = assets.map((asset) => {
+      const valInKRW = getValInKRW(asset);
+      const weightPct = Number(asset.weightPct ?? asset.weight)
+        || (totalValue > 0 ? (valInKRW / totalValue) * 100 : 0);
       return {
-        ...a,
-        ticker: normalizeTickerSymbol(a.ticker),
+        ...asset,
+        ticker: normalizeTickerSymbol(asset.ticker),
+        qty: Number(asset.qty ?? asset.quantity ?? 0),
+        cost: Number(asset.cost ?? asset.price ?? 0),
         weight: Math.round(weightPct),
         weightPct: Number(weightPct.toFixed(4)),
       };
@@ -71,53 +116,97 @@ export const PortfolioProvider = ({ children }) => {
     return {
       ...base,
       id: base.id || `portfolio-${Date.now()}`,
+      portfolioId: base.portfolioId,
       name: portfolio.name,
       purpose: portfolio.purpose,
       createdAt: base.createdAt || dateStr,
+      updatedAt: base.updatedAt,
       totalValue,
-      returnRate: base.returnRate ?? 0,
-      riskLevel: base.riskLevel || 'Moderate',
-      status: base.status || 'new',
+      returnRate: portfolio.returnRate ?? base.returnRate ?? 0,
+      riskLevel: portfolio.riskLevel || base.riskLevel || 'Moderate',
+      status: portfolio.status || base.status || 'new',
       assets: assetsWithWeight,
     };
   };
 
-  const addPortfolio = (portfolio) => {
-    const newPortfolio = buildPortfolioRecord(portfolio);
-
-    setPortfolios(prev => [newPortfolio, ...prev]);
-    return newPortfolio;
+  const addPortfolio = async (portfolio) => {
+    if (!currentUser) {
+      throw new Error('Login is required before creating a portfolio.');
+    }
+    const localRecord = buildPortfolioRecord(portfolio);
+    const payload = await createServerPortfolio(localRecord);
+    const savedPortfolio = payload?.portfolio || localRecord;
+    setPortfolios((prev) => [savedPortfolio, ...prev.filter((item) => item.id !== savedPortfolio.id)]);
+    return savedPortfolio;
   };
 
-  const deletePortfolio = (id) => {
-    setPortfolios(prev => prev.filter(p => p.id !== id));
+  const deletePortfolio = async (id) => {
+    if (isServerPortfolioId(id)) {
+      await deleteServerPortfolio(id);
+    }
+    setPortfolios((prev) => prev.filter((portfolio) => portfolio.id !== id));
   };
 
-  const updatePortfolio = (id, updates) => {
-    setPortfolios(prev => prev.map(p => {
-      if (p.id === id) {
-        if (updates.assets) {
-          return buildPortfolioRecord({ ...p, ...updates }, { ...p, status: 'updated' });
-        }
-        return { ...p, ...updates };
-      }
-      return p;
-    }));
+  const updatePortfolio = async (id, updates) => {
+    const existing = portfolios.find((portfolio) => portfolio.id === id);
+    if (!existing) return null;
+    const merged = updates.assets
+      ? buildPortfolioRecord({ ...existing, ...updates }, { ...existing, status: updates.status || 'updated' })
+      : { ...existing, ...updates };
+    if (isServerPortfolioId(id)) {
+      const payload = await updateServerPortfolio(id, merged);
+      const savedPortfolio = payload?.portfolio || merged;
+      setPortfolios((prev) => prev.map((portfolio) => (portfolio.id === id ? savedPortfolio : portfolio)));
+      return savedPortfolio;
+    }
+    setPortfolios((prev) => prev.map((portfolio) => (portfolio.id === id ? merged : portfolio)));
+    return merged;
   };
 
-  const getPortfolioById = (id) => {
-    return portfolios.find(p => p.id === id);
+  const getPortfolioById = (id) => portfolios.find((portfolio) => portfolio.id === id);
+
+  const login = async ({ email, password }) => {
+    setAuthError('');
+    const payload = await loginUser({ email, password });
+    setCurrentUser(payload.user);
+    await loadPortfolios();
+    return payload.user;
   };
+
+  const register = async ({ email, password, displayName }) => {
+    setAuthError('');
+    const payload = await registerUser({ email, password, displayName });
+    setCurrentUser(payload.user);
+    await loadPortfolios();
+    return payload.user;
+  };
+
+  const logout = async () => {
+    await logoutUser().catch(() => null);
+    setCurrentUser(null);
+    setPortfolios([]);
+  };
+
+  const value = useMemo(() => ({
+    portfolios,
+    addPortfolio,
+    deletePortfolio,
+    updatePortfolio,
+    getPortfolioById,
+    refreshPortfolios: loadPortfolios,
+    usdKrwRate,
+    currentUser,
+    authLoading,
+    authError,
+    portfolioLoading,
+    portfolioError,
+    login,
+    register,
+    logout,
+  }), [portfolios, usdKrwRate, currentUser, authLoading, authError, portfolioLoading, portfolioError]);
 
   return (
-    <PortfolioContext.Provider value={{
-      portfolios,
-      addPortfolio,
-      deletePortfolio,
-      updatePortfolio,
-      getPortfolioById,
-      usdKrwRate,
-    }}>
+    <PortfolioContext.Provider value={value}>
       {children}
     </PortfolioContext.Provider>
   );

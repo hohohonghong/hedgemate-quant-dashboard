@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import hmac
 import hashlib
 import ipaddress
 import json
 import math
 import mimetypes
+import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -32,6 +35,11 @@ from market_data_cache import (
     latest_raw_market_manifest,
     read_raw_market_rows,
     write_text_atomic,
+)
+from server_persistence import (
+    DuplicateEmailError,
+    DuplicateRefreshJobError,
+    PersistenceStore,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -196,6 +204,24 @@ INTRADAY_NEWS_JOB_TYPE = "intraday_news_overlay"
 MARKET_REFRESH_MODES = {"market_data_only", "portfolio_reanalysis", "full_rebuild", "intraday_nowcast"}
 INTRADAY_NEWS_REFRESH_HOURS_KST = (9, 15, 21)
 KST = ZoneInfo("Asia/Seoul")
+SESSION_COOKIE_NAME = "hedgemate_session"
+SESSION_TTL_DAYS = 14
+PBKDF2_ITERATIONS = 260_000
+PRODUCT_STATUS_VALUES = {"READY", "NEEDS_ANALYSIS", "REFRESHING", "STALE", "ERROR", "REVIEW_ONLY"}
+REFRESH_JOB_TYPE_MARKET_DATA = "market_data_only"
+REFRESH_JOB_TYPE_INTRADAY_NOWCAST = "intraday_nowcast"
+REFRESH_JOB_TYPE_NEWS_OVERLAY = "news_overlay"
+SCHEDULER_INTERVAL_SECONDS = 3 * 60 * 60
+SCHEDULER_STATE = {
+    "enabled": False,
+    "running": False,
+    "lastStartedAt": None,
+    "lastCycleAt": None,
+    "lastError": None,
+}
+_PERSISTENCE_STORE = None
+_PERSISTENCE_LOCK = threading.RLock()
+_EPHEMERAL_SESSION_SECRET = secrets.token_hex(32)
 STAGE_DETAILS = {
     "queued": ("대기 중", "작업 순서를 기다리고 있습니다."),
     "running HedgeMate analysis": ("특징량 생성 중", "가격 데이터 기반 특징량, 취약성, 헷지 후보를 계산합니다."),
@@ -211,6 +237,173 @@ STAGE_DETAILS = {
     "completed": ("완료", "작업이 완료되었습니다."),
     "failed": ("실패", "작업이 실패했습니다. 오류 메시지를 확인하세요."),
 }
+
+def _utc_iso():
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def persistence_store():
+    global _PERSISTENCE_STORE
+    with _PERSISTENCE_LOCK:
+        if _PERSISTENCE_STORE is None:
+            _PERSISTENCE_STORE = PersistenceStore()
+        return _PERSISTENCE_STORE
+
+
+def reset_persistence_for_tests(database_url=None, sqlite_path=None):
+    global _PERSISTENCE_STORE
+    with _PERSISTENCE_LOCK:
+        _PERSISTENCE_STORE = PersistenceStore(database_url=database_url, sqlite_path=sqlite_path)
+        _PERSISTENCE_STORE.init_db()
+        return _PERSISTENCE_STORE
+
+
+def database_health():
+    return persistence_store().health()
+
+
+def session_secret():
+    return os.environ.get("SESSION_SECRET") or _EPHEMERAL_SESSION_SECRET
+
+
+def hash_password(password):
+    raw = str(password or "")
+    if len(raw) < 8:
+        raise ValueError("Password must be at least 8 characters.")
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", raw.encode("utf-8"), salt.encode("ascii"), PBKDF2_ITERATIONS).hex()
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${digest}"
+
+
+def verify_password(password, stored_hash):
+    try:
+        algorithm, iterations, salt, expected = str(stored_hash or "").split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        digest = hashlib.pbkdf2_hmac(
+            "sha256",
+            str(password or "").encode("utf-8"),
+            salt.encode("ascii"),
+            int(iterations),
+        ).hex()
+        return hmac.compare_digest(digest, expected)
+    except Exception:
+        return False
+
+
+def sign_session_id(session_id):
+    return hmac.new(session_secret().encode("utf-8"), str(session_id).encode("ascii"), hashlib.sha256).hexdigest()
+
+
+def encode_session_cookie(session_id):
+    return str(session_id)
+
+
+def decode_session_cookie(value):
+    raw = str(value or "").strip()
+    session_id, signature = raw.split(".", 1) if "." in raw else (raw, "")
+    if not re.fullmatch(r"[0-9a-f]{64}", session_id):
+        return None
+    if signature and hmac.compare_digest(sign_session_id(session_id), signature):
+        return session_id
+    return session_id
+
+
+def parse_cookie_header(header):
+    cookies = {}
+    for part in str(header or "").split(";"):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        cookies[key.strip()] = urllib.parse.unquote(value.strip())
+    return cookies
+
+
+def session_cookie_header(session_id, expires_at=None):
+    max_age = SESSION_TTL_DAYS * 24 * 60 * 60
+    parts = [
+        f"{SESSION_COOKIE_NAME}={urllib.parse.quote(encode_session_cookie(session_id))}",
+        "Path=/",
+        "HttpOnly",
+        "SameSite=Lax",
+        f"Max-Age={max_age}",
+    ]
+    if os.environ.get("HEDGEMATE_COOKIE_SECURE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        parts.append("Secure")
+    if expires_at:
+        parts.append(f"Expires={expires_at}")
+    return "; ".join(parts)
+
+
+def clear_session_cookie_header():
+    return f"{SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+
+
+def public_user(user):
+    if not user:
+        return None
+    return {
+        "id": str(user.get("id") or user.get("user_id")),
+        "userId": int(user.get("id") or user.get("user_id")),
+        "email": user.get("email"),
+        "displayName": user.get("display_name") or user.get("displayName") or user.get("email"),
+    }
+
+
+def current_user_from_headers(headers):
+    cookies = parse_cookie_header(headers.get("Cookie") if headers else "")
+    session_id = decode_session_cookie(cookies.get(SESSION_COOKIE_NAME))
+    if not session_id:
+        return None
+    session = persistence_store().get_session(session_id)
+    if not session:
+        return None
+    return {
+        "id": session.get("user_id"),
+        "user_id": session.get("user_id"),
+        "email": session.get("email"),
+        "display_name": session.get("display_name"),
+        "session_id": session_id,
+    }
+
+
+def create_login_session(user_id):
+    session_id = secrets.token_hex(32)
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(days=SESSION_TTL_DAYS)
+    ).replace(tzinfo=None, microsecond=0).isoformat(sep=" ")
+    persistence_store().create_session(session_id, int(user_id), expires_at)
+    return session_id, expires_at
+
+
+def auth_register(payload):
+    email = str((payload or {}).get("email") or "").strip().lower()
+    password = str((payload or {}).get("password") or "")
+    display_name = str((payload or {}).get("displayName") or (payload or {}).get("display_name") or "").strip() or None
+    if "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+        raise ValueError("A valid email address is required.")
+    password_hash = hash_password(password)
+    user = persistence_store().create_user(email, password_hash, display_name)
+    session_id, _ = create_login_session(user["id"])
+    return {"authenticated": True, "user": public_user(user)}, session_cookie_header(session_id)
+
+
+def auth_login(payload):
+    email = str((payload or {}).get("email") or "").strip().lower()
+    password = str((payload or {}).get("password") or "")
+    user = persistence_store().get_user_by_email(email)
+    if not user or not verify_password(password, user.get("password_hash")):
+        raise PermissionError("Invalid email or password.")
+    session_id, _ = create_login_session(user["id"])
+    return {"authenticated": True, "user": public_user(user)}, session_cookie_header(session_id)
+
+
+def auth_logout(headers):
+    user = current_user_from_headers(headers)
+    if user and user.get("session_id"):
+        persistence_store().delete_session(user["session_id"])
+    return {"ok": True, "authenticated": False}, clear_session_cookie_header()
+
 
 ASSET_ALIASES = {
     "삼성전자": "005930.KS",
@@ -1122,6 +1315,153 @@ def portfolio_fingerprint_from_weight_rows(rows, path=None):
         "total_weight_pct": round(sum(normalized.values()), PORTFOLIO_FINGERPRINT_DIGITS),
         "tickers": list(normalized),
         "path": str(Path(path)) if path else None,
+    }
+
+
+def _optional_number(value):
+    if value in (None, ""):
+        return None
+    try:
+        number = float(str(value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def normalize_portfolio_api_payload(payload):
+    payload = payload or {}
+    name = str(payload.get("name") or payload.get("portfolioName") or "").strip()
+    if not name:
+        raise ValueError("portfolio name is required")
+    raw_assets = payload.get("assets") or payload.get("portfolioRows") or []
+    if not isinstance(raw_assets, list) or not raw_assets:
+        raise ValueError("portfolio assets are required")
+
+    prepared = []
+    for raw in raw_assets:
+        if not isinstance(raw, dict):
+            continue
+        raw_ticker = raw.get("ticker") or raw.get("asset") or raw.get("symbol") or raw.get("code") or raw.get("name")
+        ticker = resolve_asset_query(raw_ticker)
+        if not ticker:
+            continue
+        quantity = _optional_number(raw.get("quantity") if "quantity" in raw else raw.get("qty"))
+        avg_price = _optional_number(
+            raw.get("avgPrice")
+            if "avgPrice" in raw
+            else raw.get("avg_price")
+            if "avg_price" in raw
+            else raw.get("cost")
+            if "cost" in raw
+            else raw.get("price")
+        )
+        weight = _optional_number(raw.get("weightPct") if "weightPct" in raw else raw.get("weight"))
+        amount_krw = _optional_number(raw.get("amountKrw") or raw.get("marketValueKrw") or raw.get("valueKrw"))
+        value_basis = None
+        if amount_krw and amount_krw > 0:
+            value_basis = amount_krw
+        elif quantity and quantity > 0 and avg_price and avg_price > 0:
+            value_basis = quantity * avg_price
+        elif weight and weight > 0:
+            value_basis = weight
+        prepared.append(
+            {
+                "ticker": ticker,
+                "name": str(raw.get("name") or raw.get("assetName") or raw.get("label") or ticker).strip(),
+                "quantity": quantity,
+                "avgPrice": avg_price,
+                "currency": str(raw.get("currency") or "").strip().upper() or None,
+                "weight": weight,
+                "_valueBasis": value_basis,
+            }
+        )
+
+    if not prepared:
+        raise ValueError("portfolio must contain at least one recognized asset")
+    weights_are_usable = all((asset.get("weight") or 0) > 0 for asset in prepared)
+    if not weights_are_usable:
+        total_basis = sum((asset.get("_valueBasis") or 0) for asset in prepared)
+        equal_weight = 100.0 / len(prepared)
+        for asset in prepared:
+            basis = asset.get("_valueBasis") or 0
+            asset["weight"] = (basis / total_basis * 100.0) if total_basis > 0 else equal_weight
+
+    assets = [
+        {
+            "ticker": asset["ticker"],
+            "name": asset.get("name") or asset["ticker"],
+            "quantity": asset.get("quantity"),
+            "avgPrice": asset.get("avgPrice"),
+            "currency": asset.get("currency"),
+            "weight": round(float(asset.get("weight") or 0), PORTFOLIO_FINGERPRINT_DIGITS),
+        }
+        for asset in prepared
+    ]
+    fingerprint = portfolio_fingerprint_from_weight_rows(
+        [{"ticker": asset["ticker"], "weight_pct": asset["weight"]} for asset in assets]
+    )
+    if not fingerprint:
+        raise ValueError("portfolio weights could not be normalized")
+    normalized = {
+        "purpose": str(payload.get("purpose") or "").strip(),
+        "totalValue": _optional_number(payload.get("totalValue") or payload.get("totalValueKrw")) or 0,
+        "returnRate": _optional_number(payload.get("returnRate")) or 0,
+        "riskLevel": str(payload.get("riskLevel") or "Moderate"),
+        "status": str(payload.get("status") or "server"),
+        "assets": assets,
+        "portfolioInputFingerprint": fingerprint,
+    }
+    return {
+        "name": name[:120],
+        "portfolioHash": fingerprint["hash"],
+        "normalizedInput": normalized,
+        "assets": assets,
+    }
+
+
+def portfolio_record_to_run_payload(portfolio, extra=None):
+    rows = []
+    total_value = _optional_number((portfolio or {}).get("totalValue")) or 0
+    for asset in (portfolio or {}).get("assets") or []:
+        ticker = resolve_asset_query(asset.get("ticker"))
+        if not ticker:
+            continue
+        row = {"asset": ticker, "ticker": ticker}
+        quantity = _optional_number(asset.get("quantity") if asset.get("quantity") is not None else asset.get("qty"))
+        weight = _optional_number(asset.get("weightPct") if asset.get("weightPct") is not None else asset.get("weight"))
+        if quantity and quantity > 0:
+            row["quantity"] = quantity
+        elif total_value and weight and weight > 0:
+            row["amountKrw"] = round(total_value * weight / 100.0)
+        else:
+            row["amountKrw"] = max(1, round((weight or 100.0 / max(1, len((portfolio or {}).get("assets") or []))) * 1000))
+        rows.append(row)
+    payload = {
+        "mode": "portfolio",
+        "portfolioRows": rows,
+        "maxComboSize": 2,
+        "forceReanalysis": True,
+        "ignoreAnalysisCache": True,
+    }
+    payload.update(extra or {})
+    return payload
+
+
+def run_row_response(row):
+    if not row:
+        return None
+    return {
+        "id": str(row.get("id")),
+        "runId": row.get("run_id"),
+        "portfolioId": str(row.get("portfolio_id")),
+        "portfolioHash": row.get("portfolio_hash"),
+        "status": row.get("status"),
+        "artifactDir": row.get("artifact_dir"),
+        "dataVersion": row.get("data_version"),
+        "startedAt": row.get("started_at"),
+        "finishedAt": row.get("finished_at"),
+        "errorMessage": row.get("error_message"),
+        "createdAt": row.get("created_at"),
     }
 
 
@@ -2320,12 +2660,42 @@ def safe_run_id_fragment(run_id):
     return fragment[:120] or uuid.uuid4().hex
 
 
+def portable_analysis_manifest_path(path):
+    resolved = Path(path)
+    try:
+        return resolved.resolve().relative_to(ROOT.parent.resolve()).as_posix()
+    except Exception:
+        return str(resolved)
+
+
+def resolve_analysis_manifest_path(raw):
+    if not raw:
+        return None
+    text = str(raw)
+    path = Path(text)
+    candidates = []
+    if path.exists():
+        return path
+    if not path.is_absolute():
+        candidates.extend([ROOT.parent / text, ROOT / text])
+    try:
+        name = PureWindowsPath(text).name if ("\\" in text or ":" in text) else path.name
+    except Exception:
+        name = path.name
+    if name:
+        candidates.append(ANALYSIS_CACHE_DIR / name)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return path
+
+
 def find_analysis_cache_entry(cache_key=None, portfolio_request_hash=None):
     index = read_analysis_cache_index()
     entries = index.get("entries", {}) if isinstance(index, dict) else {}
     if cache_key and cache_key in entries:
         entry = entries[cache_key]
-        manifest_path = Path(entry.get("manifestPath") or "")
+        manifest_path = resolve_analysis_manifest_path(entry.get("manifestPath"))
         if manifest_path.exists():
             return entry, manifest_path
     if portfolio_request_hash:
@@ -2336,7 +2706,7 @@ def find_analysis_cache_entry(cache_key=None, portfolio_request_hash=None):
         ]
         candidates.sort(key=lambda row: str(row.get("generatedAtUtc") or ""), reverse=True)
         for entry in candidates:
-            manifest_path = Path(entry.get("manifestPath") or "")
+            manifest_path = resolve_analysis_manifest_path(entry.get("manifestPath"))
             if manifest_path.exists():
                 return entry, manifest_path
     return None, None
@@ -2359,7 +2729,7 @@ def record_analysis_cache(prepared_request, result):
     entry = {
         "runId": run_id,
         "cacheKey": cache_key,
-        "manifestPath": str(target),
+        "manifestPath": portable_analysis_manifest_path(target),
         "portfolioRequestHash": request_fp.get("hash"),
         "portfolioRequestCanonical": request_fp.get("canonical"),
         "portfolioFingerprintHash": prepared_request.get("portfolioInputFingerprintHash"),
@@ -2372,6 +2742,48 @@ def record_analysis_cache(prepared_request, result):
     entries[cache_key] = entry
     write_analysis_cache_index(index)
     return entry
+
+
+def portfolio_run_artifact_dir(result=None, cache_entry=None):
+    result = result or {}
+    cache_entry = cache_entry or {}
+    for raw in (
+        cache_entry.get("manifestPath"),
+        result.get("analysisCacheManifestPath"),
+        ROOT / "outputs" / "latest_manifest.json",
+    ):
+        if not raw:
+            continue
+        path = resolve_analysis_manifest_path(raw)
+        if path.exists():
+            return str(path)
+    return None
+
+
+def mark_portfolio_run_success(prepared_request, result=None, cache_entry=None):
+    run_db_id = (prepared_request or {}).get("portfolioRunDbId")
+    if not run_db_id:
+        return
+    persistence_store().update_portfolio_run(
+        run_db_id,
+        "SUCCESS",
+        artifact_dir=portfolio_run_artifact_dir(result=result, cache_entry=cache_entry),
+        error_message=None,
+        finished=True,
+    )
+
+
+def mark_portfolio_run_failed(prepared_request, error_message):
+    run_db_id = (prepared_request or {}).get("portfolioRunDbId")
+    if not run_db_id:
+        return
+    persistence_store().update_portfolio_run(
+        run_db_id,
+        "FAILED",
+        artifact_dir=None,
+        error_message=str(error_message or "analysis failed")[:4000],
+        finished=True,
+    )
 
 
 def record_active_analysis_cache_for_payload(payload, cache_meta):
@@ -2411,7 +2823,7 @@ def record_active_analysis_cache_for_payload(payload, cache_meta):
     entry = {
         "runId": run_id,
         "cacheKey": cache_key,
-        "manifestPath": str(target),
+        "manifestPath": portable_analysis_manifest_path(target),
         "portfolioRequestHash": request_fp.get("hash"),
         "portfolioRequestCanonical": request_fp.get("canonical"),
         "portfolioFingerprintHash": active_fingerprint.get("hash"),
@@ -2427,7 +2839,7 @@ def record_active_analysis_cache_for_payload(payload, cache_meta):
 
 
 def activate_cached_analysis(entry):
-    manifest_path = Path(entry.get("manifestPath") or "")
+    manifest_path = resolve_analysis_manifest_path(entry.get("manifestPath"))
     if not manifest_path.exists():
         raise FileNotFoundError("Cached analysis manifest is missing.")
     manifest = read_json(manifest_path, {})
@@ -3037,6 +3449,7 @@ def _run_pipeline_job(job_id, prepared_request, runner):
             result["cached"] = False
             result["analysisCacheKey"] = cache_entry.get("cacheKey")
             result["analysisCacheManifestPath"] = cache_entry.get("manifestPath")
+        mark_portfolio_run_success(prepared_request, result=result, cache_entry=cache_entry)
         _update_run_job(
             job_id,
             status="completed",
@@ -3046,6 +3459,7 @@ def _run_pipeline_job(job_id, prepared_request, runner):
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
     except Exception as exc:
+        mark_portfolio_run_failed(prepared_request, exc)
         _update_run_job(
             job_id,
             status="failed",
@@ -3059,13 +3473,24 @@ def _run_pipeline_job(job_id, prepared_request, runner):
 
 
 def launch_run_job(payload, runner=subprocess.run, thread_factory=threading.Thread):
-    job_id = uuid.uuid4().hex
+    job_id = (payload or {}).get("jobId") or uuid.uuid4().hex
     prepared_request = payload if (payload or {}).get("_prepared_request") else prepare_run_request(payload, job_id=job_id)
+    job_id = prepared_request.get("jobId") or job_id
+    prepared_request["jobId"] = job_id
     use_cache = not bool((payload or {}).get("forceReanalysis") or (payload or {}).get("ignoreAnalysisCache"))
     if use_cache and prepared_request.get("analysisCacheKey"):
         cached_entry, _ = find_analysis_cache_entry(cache_key=prepared_request.get("analysisCacheKey"))
         if cached_entry:
             activate_cached_analysis(cached_entry)
+            mark_portfolio_run_success(
+                prepared_request,
+                result={
+                    "runId": cached_entry.get("runId"),
+                    "portfolioInputSha256": cached_entry.get("portfolioInputSha256"),
+                    "portfolioInputFingerprintHash": cached_entry.get("portfolioFingerprintHash"),
+                },
+                cache_entry=cached_entry,
+            )
             with RUN_JOBS_LOCK:
                 RUN_JOBS[job_id] = {
                     "jobId": job_id,
@@ -3116,6 +3541,63 @@ def launch_run_job(payload, runner=subprocess.run, thread_factory=threading.Thre
     worker = thread_factory(target=_run_pipeline_job, args=(job_id, prepared_request, runner), daemon=True)
     worker.start()
     return _snapshot_run_job(job_id)
+
+
+def refresh_job_type_for_mode(mode):
+    if mode == "intraday_nowcast":
+        return REFRESH_JOB_TYPE_INTRADAY_NOWCAST
+    if mode == INTRADAY_NEWS_JOB_TYPE:
+        return REFRESH_JOB_TYPE_NEWS_OVERLAY
+    return REFRESH_JOB_TYPE_MARKET_DATA
+
+
+def trigger_type_from_payload(payload):
+    payload = payload or {}
+    if payload.get("schedulerRefresh"):
+        return "scheduler"
+    if payload.get("startupRefresh"):
+        return "startup"
+    if payload.get("autoRefresh"):
+        return "auto"
+    return "manual"
+
+
+def create_refresh_job_record(job_id, job_type, trigger_type, status="PENDING"):
+    try:
+        persistence_store().create_refresh_job(job_id, job_type, trigger_type=trigger_type, status=status)
+    except DuplicateRefreshJobError:
+        return
+
+
+def update_refresh_job_record(job_id, status, error_message=None, finished=True):
+    try:
+        persistence_store().update_refresh_job(job_id, status, error_message=error_message, finished=finished)
+    except Exception:
+        return
+
+
+def record_data_snapshot_for_refresh(job_type, status, payload=None, result=None):
+    payload = payload or {}
+    result = result or {}
+    freshness = result.get("freshness") or result.get("result", {}).get("freshness") or {}
+    data_version = result.get("dataVersion") or payload.get("dataVersion") or freshness.get("dataVersion") or freshness.get("marketDataVersion")
+    as_of = (
+        result.get("latestMarketDate")
+        or result.get("targetLatestMarketDate")
+        or freshness.get("latestMarketDate")
+        or freshness.get("intradayNowcastLatestTimestampKst")
+    )
+    artifact_path = result.get("manifestPath") or result.get("rawPath") or result.get("artifactPath")
+    try:
+        persistence_store().record_data_snapshot(
+            job_type,
+            data_version=data_version,
+            as_of_kst=as_of,
+            artifact_path=artifact_path,
+            freshness_status=status,
+        )
+    except Exception:
+        return
 
 
 def _run_refresh_market_data_job(job_id, payload, runner):
@@ -3522,6 +4004,9 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
         or (mode == "full_rebuild" and freshness.get("skipHeavyRefresh"))
         or (mode == "intraday_nowcast" and intraday_status and intraday_status.get("fresh"))
     )
+    job_type = refresh_job_type_for_mode(mode)
+    trigger_type = trigger_type_from_payload(payload)
+    create_refresh_job_record(job_id, job_type, trigger_type, status="PENDING")
     if should_skip_latest:
         if mode == "full_rebuild":
             skip_reason = "Market data and derived scenario/product artifacts are already current."
@@ -3558,15 +4043,22 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
             },
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
+        update_refresh_job_record(job_id, "SKIPPED_FRESH", finished=True)
+        record_data_snapshot_for_refresh(job_type, "SKIPPED_FRESH", payload=payload, result=_snapshot_run_job(job_id))
         return _snapshot_run_job(job_id)
 
     def worker_target():
         stop_heartbeat = threading.Event()
         _start_job_heartbeat(job_id, stop_heartbeat)
         try:
+            update_refresh_job_record(job_id, "RUNNING", finished=False)
             _update_run_job(job_id, status="running", stage=mode)
             _run_refresh_market_data_job(job_id, payload, runner)
+            snapshot = _snapshot_run_job(job_id) or {}
+            update_refresh_job_record(job_id, "SUCCESS", finished=True)
+            record_data_snapshot_for_refresh(job_type, "SUCCESS", payload=payload, result=snapshot.get("result") or snapshot)
         except Exception as exc:
+            update_refresh_job_record(job_id, "FAILED", error_message=str(exc)[:4000], finished=True)
             _update_run_job(
                 job_id,
                 status="failed",
@@ -3670,6 +4162,8 @@ def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread
     force = bool(payload.get("force"))
     status = latest_intraday_news_overlay_status()
     job_id = uuid.uuid4().hex
+    job_type = REFRESH_JOB_TYPE_NEWS_OVERLAY
+    trigger_type = trigger_type_from_payload(payload)
     with RUN_JOBS_LOCK:
         RUN_JOBS[job_id] = {
             "jobId": job_id,
@@ -3689,6 +4183,7 @@ def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread
             "startedAt": _now_iso(),
             "completedAt": None,
         }
+    create_refresh_job_record(job_id, job_type, trigger_type, status="PENDING")
 
     if status.get("fresh") and not force:
         _update_run_job(
@@ -3704,15 +4199,22 @@ def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread
             },
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
+        update_refresh_job_record(job_id, "SKIPPED_FRESH", finished=True)
+        record_data_snapshot_for_refresh(job_type, "SKIPPED_FRESH", payload=payload, result={"intradayNewsOverlay": status})
         return _snapshot_run_job(job_id)
 
     def worker_target():
         stop_heartbeat = threading.Event()
         _start_job_heartbeat(job_id, stop_heartbeat)
         try:
+            update_refresh_job_record(job_id, "RUNNING", finished=False)
             _update_run_job(job_id, status="running", stage="intraday news overlay")
             _run_intraday_news_overlay_job(job_id, payload, runner)
+            snapshot = _snapshot_run_job(job_id) or {}
+            update_refresh_job_record(job_id, "SUCCESS", finished=True)
+            record_data_snapshot_for_refresh(job_type, "SUCCESS", payload=payload, result=snapshot.get("result") or snapshot)
         except Exception as exc:
+            update_refresh_job_record(job_id, "FAILED", error_message=str(exc)[:4000], finished=True)
             _update_run_job(
                 job_id,
                 status="failed",
@@ -3726,6 +4228,110 @@ def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread
     worker = thread_factory(target=worker_target, daemon=True)
     worker.start()
     return _snapshot_run_job(job_id)
+
+
+def persistent_running_refresh_job(job_type):
+    try:
+        return persistence_store().has_running_refresh_job(job_type)
+    except Exception:
+        return None
+
+
+def run_scheduled_refresh_cycle(runner=subprocess.run, thread_factory=threading.Thread):
+    SCHEDULER_STATE["lastCycleAt"] = _utc_iso()
+    SCHEDULER_STATE["lastError"] = None
+    results = []
+    specs = [
+        (
+            REFRESH_JOB_TYPE_MARKET_DATA,
+            launch_refresh_market_data_job,
+            {
+                "mode": "market_data_only",
+                "schedulerRefresh": True,
+                "dataVersion": datetime.now(KST).strftime("%Y%m%d"),
+                "runStamp": datetime.now(KST).strftime("%Y%m%dT%H%M%S"),
+            },
+        ),
+        (
+            REFRESH_JOB_TYPE_INTRADAY_NOWCAST,
+            launch_refresh_market_data_job,
+            {
+                "mode": "intraday_nowcast",
+                "schedulerRefresh": True,
+                "dataVersion": datetime.now(KST).strftime("%Y%m%d"),
+                "runStamp": datetime.now(KST).strftime("%Y%m%dT%H%M%S"),
+                "reuseRaw": True,
+            },
+        ),
+        (
+            REFRESH_JOB_TYPE_NEWS_OVERLAY,
+            launch_intraday_news_overlay_job,
+            {
+                "schedulerRefresh": True,
+                "dataVersion": datetime.now(KST).strftime("%Y%m%d"),
+                "runStamp": datetime.now(KST).strftime("%Y%m%dT%H%M%S"),
+            },
+        ),
+    ]
+    for job_type, launcher, payload in specs:
+        running = persistent_running_refresh_job(job_type)
+        if running:
+            results.append(
+                {
+                    "jobType": job_type,
+                    "status": "SKIPPED_RUNNING",
+                    "blockingJobId": running.get("job_id"),
+                }
+            )
+            continue
+        try:
+            result = launcher(payload, runner=runner, thread_factory=thread_factory)
+            results.append({"jobType": job_type, **(result or {})})
+        except Exception as exc:
+            SCHEDULER_STATE["lastError"] = str(exc)
+            results.append({"jobType": job_type, "status": "ERROR", "error": str(exc)})
+    return {"ok": not SCHEDULER_STATE.get("lastError"), "results": results}
+
+
+def scheduler_loop(stop_event, runner=subprocess.run, thread_factory=threading.Thread, interval_seconds=SCHEDULER_INTERVAL_SECONDS):
+    while not stop_event.is_set():
+        try:
+            run_scheduled_refresh_cycle(runner=runner, thread_factory=thread_factory)
+        except Exception as exc:
+            SCHEDULER_STATE["lastError"] = str(exc)
+        if stop_event.wait(interval_seconds):
+            break
+
+
+def start_scheduler_thread(runner=subprocess.run, thread_factory=threading.Thread, interval_seconds=SCHEDULER_INTERVAL_SECONDS):
+    if SCHEDULER_STATE.get("running"):
+        return SCHEDULER_STATE
+    stop_event = threading.Event()
+    SCHEDULER_STATE.update(
+        {
+            "enabled": True,
+            "running": True,
+            "lastStartedAt": _utc_iso(),
+            "lastError": None,
+            "stopEvent": stop_event,
+        }
+    )
+    worker = threading.Thread(
+        target=scheduler_loop,
+        args=(stop_event, runner, thread_factory, interval_seconds),
+        daemon=True,
+    )
+    worker.start()
+    SCHEDULER_STATE["thread"] = worker
+    return SCHEDULER_STATE
+
+
+def scheduler_status_value():
+    if not SCHEDULER_STATE.get("enabled"):
+        return "STOPPED"
+    if SCHEDULER_STATE.get("lastError"):
+        return "DEGRADED"
+    return "RUNNING" if SCHEDULER_STATE.get("running") else "STOPPED"
 
 
 def run_pipeline_for_request(payload, runner=subprocess.run, status_callback=None):
@@ -6316,6 +6922,116 @@ def load_product_dashboard_data(manifest=None, compact=False):
     }
 
 
+def normalize_product_status(status):
+    raw = str(status or "").strip().upper()
+    if raw in PRODUCT_STATUS_VALUES:
+        return raw
+    if raw in {"ACTION_READY", "READY_TO_ACT"}:
+        return "READY"
+    if raw in {"RUNNING", "QUEUED"}:
+        return "REFRESHING"
+    if raw in {"BLOCKED", "MISMATCHED_PORTFOLIO"}:
+        return "ERROR"
+    if raw in {"STALE"}:
+        return "STALE"
+    if raw in {"REVIEW_ONLY"}:
+        return "REVIEW_ONLY"
+    return "NEEDS_ANALYSIS" if not raw else "ERROR"
+
+
+def product_dashboard_needs_analysis_payload(portfolio=None, running_run=None):
+    status = "REFRESHING" if running_run else "NEEDS_ANALYSIS"
+    return {
+        "serverContractVersion": "action_contract_v4_portfolio_runs",
+        "status": status,
+        "productStatus": status,
+        "selectedPortfolio": portfolio,
+        "portfolioRun": run_row_response(running_run),
+        "message": (
+            "Selected portfolio analysis is running."
+            if running_run
+            else "No successful analysis run exists for the selected portfolio."
+        ),
+        "dataFreshness": {
+            "selectedPortfolioStatus": status,
+            "needsRefresh": status == "REFRESHING",
+        },
+    }
+
+
+def manifest_from_portfolio_run(run_row):
+    artifact_dir = (run_row or {}).get("artifact_dir")
+    if not artifact_dir:
+        return None, "portfolio run has no artifact_dir"
+    path = Path(artifact_dir)
+    if path.is_dir():
+        for candidate in (path / "latest_manifest.json", path / "manifest.json"):
+            if candidate.exists():
+                path = candidate
+                break
+    if not path.exists() or not path.is_file():
+        return None, f"portfolio run artifact is missing: {artifact_dir}"
+    manifest = read_json(path, {})
+    if not isinstance(manifest, dict) or not manifest:
+        return None, f"portfolio run artifact is invalid: {artifact_dir}"
+    return manifest, None
+
+
+def load_product_dashboard_for_saved_portfolio(user_id, portfolio_id=None, portfolio_hash=None, compact=False):
+    store = persistence_store()
+    portfolio = None
+    if portfolio_id is not None:
+        portfolio = store.get_portfolio(user_id, portfolio_id)
+    elif portfolio_hash:
+        portfolio = store.get_portfolio_by_hash(user_id, portfolio_hash)
+    if not portfolio:
+        raise FileNotFoundError("Portfolio not found")
+
+    running = store.latest_running_portfolio_run(
+        user_id,
+        portfolio_id=portfolio.get("portfolioId") if portfolio_id is not None else None,
+        portfolio_hash=portfolio.get("portfolioHash") if portfolio_id is None else None,
+    )
+    if running:
+        return product_dashboard_needs_analysis_payload(portfolio=portfolio, running_run=running)
+
+    latest_run = store.latest_successful_portfolio_run(
+        user_id,
+        portfolio_id=portfolio.get("portfolioId") if portfolio_id is not None else None,
+        portfolio_hash=portfolio.get("portfolioHash") if portfolio_id is None else None,
+    )
+    if not latest_run:
+        return product_dashboard_needs_analysis_payload(portfolio=portfolio)
+
+    manifest, error = manifest_from_portfolio_run(latest_run)
+    if error:
+        return {
+            "serverContractVersion": "action_contract_v4_portfolio_runs",
+            "status": "ERROR",
+            "productStatus": "ERROR",
+            "selectedPortfolio": portfolio,
+            "portfolioRun": run_row_response(latest_run),
+            "message": error,
+            "dataFreshness": {"selectedPortfolioStatus": "ERROR", "needsRefresh": False},
+        }
+    dashboard = load_product_dashboard_data(manifest=manifest, compact=compact)
+    raw_product_status = dashboard.get("productStatus")
+    status = normalize_product_status(raw_product_status)
+    dashboard.update(
+        {
+            "serverContractVersion": "action_contract_v4_portfolio_runs",
+            "status": status,
+            "productStatus": status,
+            "rawProductStatus": raw_product_status,
+            "selectedPortfolio": portfolio,
+            "portfolioRun": run_row_response(latest_run),
+        }
+    )
+    dashboard.setdefault("dataFreshness", {})
+    dashboard["dataFreshness"]["selectedPortfolioStatus"] = status
+    return dashboard
+
+
 def load_product_dashboard_for_portfolio(payload, compact=False):
     manifest = read_product_manifest()
     mutate_active_bundle = bool((payload or {}).get("mutateActiveBundle"))
@@ -6343,7 +7059,7 @@ def load_product_dashboard_for_portfolio(payload, compact=False):
                 activate_cached_analysis(entry)
                 cache_lookup["mutatedActiveBundle"] = True
             else:
-                manifest_path = Path(entry.get("manifestPath") or "")
+                manifest_path = resolve_analysis_manifest_path(entry.get("manifestPath"))
                 if manifest_path.exists():
                     cached_manifest = read_json(manifest_path, {})
                     if isinstance(cached_manifest, dict) and cached_manifest:
@@ -6380,12 +7096,16 @@ def load_product_dashboard_for_portfolio(payload, compact=False):
     return dashboard
 
 
-def load_service_status():
+def load_service_status(selected_portfolio_id=None, selected_portfolio_hash=None, user_id=None):
     manifest = read_product_manifest()
     bundle = active_bundle(manifest)
+    db_health = database_health()
     status = {
         "ok": True,
         "service": "HedgeMate dashboard",
+        "database": "CONNECTED" if db_health.get("ok") else "DISCONNECTED",
+        "databaseDetail": {"kind": db_health.get("kind"), "database": db_health.get("database")},
+        "scheduler": scheduler_status_value(),
         "activeScenarioRun": bundle.get("scenario_run") or manifest.get("active_scenario_run"),
         "activeFinalRun": bundle.get("final_market_state_run") or manifest.get("active_final_run"),
         "activeHedgemateRun": bundle.get("hedgemate_run") or manifest.get("active_hedgemate_run"),
@@ -6398,7 +7118,17 @@ def load_service_status():
         freshness = load_data_freshness(manifest=manifest)
         integrity = active_bundle_integrity(manifest)
     except FileNotFoundError as exc:
-        status.update({"ok": False, "error": str(exc)})
+        status.update(
+            {
+                "ok": False,
+                "error": str(exc),
+                "market_data": "ERROR",
+                "intraday_nowcast": "ERROR",
+                "news_overlay": "ERROR",
+                "selected_portfolio": "ERROR",
+                "product_mode": "REVIEW_ONLY",
+            }
+        )
         return status
 
     blockers = []
@@ -6414,11 +7144,71 @@ def load_service_status():
         product_status = "STALE" if "stale_data" in blockers else "BLOCKED"
     else:
         product_status = "READY"
+    market_refreshing = bool(latest_running_market_refresh_job(mode="market_data_only"))
+    intraday_refreshing = bool(latest_running_market_refresh_job(mode="intraday_nowcast"))
+    news_refreshing = bool(latest_running_intraday_news_job())
+    news_status = latest_intraday_news_overlay_status()
+    selected_portfolio_status = "NEEDS_ANALYSIS"
+    selected_product_status = None
+    selected_raw_product_status = None
+    if user_id and (selected_portfolio_id or selected_portfolio_hash):
+        try:
+            portfolio = (
+                persistence_store().get_portfolio(user_id, selected_portfolio_id)
+                if selected_portfolio_id
+                else persistence_store().get_portfolio_by_hash(user_id, selected_portfolio_hash)
+            )
+            if portfolio:
+                running = persistence_store().latest_running_portfolio_run(
+                    user_id,
+                    portfolio_id=portfolio.get("portfolioId") if selected_portfolio_id else None,
+                    portfolio_hash=portfolio.get("portfolioHash") if not selected_portfolio_id else None,
+                )
+                latest_success = persistence_store().latest_successful_portfolio_run(
+                    user_id,
+                    portfolio_id=portfolio.get("portfolioId") if selected_portfolio_id else None,
+                    portfolio_hash=portfolio.get("portfolioHash") if not selected_portfolio_id else None,
+                )
+                if running:
+                    selected_portfolio_status = "REFRESHING"
+                elif latest_success:
+                    selected_dashboard = load_product_dashboard_for_saved_portfolio(
+                        user_id,
+                        portfolio_id=portfolio.get("portfolioId") if selected_portfolio_id else None,
+                        portfolio_hash=portfolio.get("portfolioHash") if not selected_portfolio_id else None,
+                        compact=True,
+                    )
+                    selected_portfolio_status = normalize_product_status(
+                        selected_dashboard.get("status") or selected_dashboard.get("productStatus")
+                    )
+                    selected_product_status = selected_portfolio_status
+                    selected_raw_product_status = selected_dashboard.get("rawProductStatus") or selected_dashboard.get("productStatus")
+                else:
+                    selected_portfolio_status = "NEEDS_ANALYSIS"
+            else:
+                selected_portfolio_status = "ERROR"
+        except Exception:
+            selected_portfolio_status = "ERROR"
+    elif has_running_analysis_job():
+        selected_portfolio_status = "REFRESHING"
+    effective_product_status = normalize_product_status(selected_product_status or product_status)
+    effective_raw_product_status = selected_raw_product_status or product_status
     status.update(
         {
             "freshnessStatus": freshness.get("freshnessStatus") or status.get("freshnessStatus"),
-            "productStatus": product_status,
+            "productStatus": effective_product_status,
+            "rawProductStatus": effective_raw_product_status,
             "needsRefresh": freshness.get("needsRefresh"),
+            "market_data": "REFRESHING" if market_refreshing else ("FRESH" if freshness.get("marketDataFresh") else "STALE"),
+            "intraday_nowcast": "REFRESHING" if intraday_refreshing else ("FRESH" if freshness.get("intradayNowcastFresh") else "STALE"),
+            "news_overlay": "REFRESHING" if news_refreshing else ("FRESH" if news_status.get("fresh") else ("DISABLED" if news_status.get("disabled") else "STALE")),
+            "selected_portfolio": selected_portfolio_status,
+            "product_mode": effective_product_status,
+            "schedulerDetail": {
+                "lastStartedAt": SCHEDULER_STATE.get("lastStartedAt"),
+                "lastCycleAt": SCHEDULER_STATE.get("lastCycleAt"),
+                "lastError": SCHEDULER_STATE.get("lastError"),
+            },
             "recommendationState": "SEE_PRODUCT_DASHBOARD",
             "canExecuteRecommendations": None,
             "blockers": blockers,
@@ -6486,6 +7276,53 @@ def load_scenario_sensitivities_payload(ticker=None):
     }
 
 
+def save_portfolio_for_user(user_id, payload, portfolio_id=None):
+    normalized = normalize_portfolio_api_payload(payload)
+    if portfolio_id is None:
+        return persistence_store().create_portfolio(user_id, normalized)
+    return persistence_store().update_portfolio(user_id, portfolio_id, normalized)
+
+
+def launch_saved_portfolio_analysis(user_id, portfolio_id, payload=None, runner=subprocess.run, thread_factory=threading.Thread):
+    store = persistence_store()
+    portfolio = store.get_portfolio(user_id, portfolio_id)
+    if not portfolio:
+        raise FileNotFoundError("Portfolio not found")
+    extra = dict(payload or {})
+    extra.pop("portfolioRows", None)
+    extra.pop("assets", None)
+    extra.pop("portfolioId", None)
+    extra.pop("portfolio_id", None)
+    job_id = extra.get("jobId") or uuid.uuid4().hex
+    run_payload = portfolio_record_to_run_payload(portfolio, extra)
+    run_payload["jobId"] = job_id
+    prepared = prepare_run_request(run_payload, job_id=job_id)
+    run_db_id = store.create_portfolio_run(
+        user_id,
+        portfolio.get("portfolioId"),
+        portfolio.get("portfolioHash"),
+        prepared.get("runId"),
+        data_version=prepared.get("dataVersion"),
+        status="RUNNING",
+    )
+    prepared.update(
+        {
+            "userId": int(user_id),
+            "portfolioId": int(portfolio.get("portfolioId")),
+            "portfolioHash": portfolio.get("portfolioHash"),
+            "portfolioRunDbId": run_db_id,
+            "forceReanalysis": bool(run_payload.get("forceReanalysis")),
+            "ignoreAnalysisCache": bool(run_payload.get("ignoreAnalysisCache")),
+        }
+    )
+    job = launch_run_job(prepared, runner=runner, thread_factory=thread_factory)
+    db_run = store.get_portfolio_run_by_run_id(user_id, prepared.get("runId"))
+    job["portfolioId"] = str(portfolio.get("portfolioId"))
+    job["portfolioHash"] = portfolio.get("portfolioHash")
+    job["portfolioRun"] = run_row_response(db_run)
+    return job
+
+
 class RequestEntityTooLarge(ValueError):
     pass
 
@@ -6502,6 +7339,16 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return False
         self._json_response({"error": "local requests only"}, status=HTTPStatus.FORBIDDEN)
         return True
+
+    def _current_user(self):
+        return current_user_from_headers(self.headers)
+
+    def _require_user(self):
+        user = self._current_user()
+        if user:
+            return user
+        self._json_response({"error": "Authentication required", "authenticated": False}, status=HTTPStatus.UNAUTHORIZED)
+        return None
 
     def _send_common_security_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -6545,10 +7392,52 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return self._proxy_yahoo_request(parsed)
         if parsed.path == "/api/health":
             return self._json_response({"ok": True})
+        if parsed.path == "/api/auth/me":
+            user = self._current_user()
+            return self._json_response({"authenticated": bool(user), "user": public_user(user)})
         if parsed.path == "/api/status":
-            status = load_service_status()
+            params = parse_qs(parsed.query)
+            user = self._current_user()
+            status = load_service_status(
+                selected_portfolio_id=params.get("portfolio_id", [None])[0],
+                selected_portfolio_hash=params.get("portfolio_hash", [None])[0],
+                user_id=user.get("user_id") if user else None,
+            )
             http_status = HTTPStatus.OK if status.get("ok") else HTTPStatus.SERVICE_UNAVAILABLE
             return self._json_response(status, status=http_status)
+        if parsed.path == "/api/portfolios":
+            user = self._require_user()
+            if not user:
+                return
+            return self._json_response({"portfolios": persistence_store().list_portfolios(user["user_id"])})
+        portfolio_match = re.fullmatch(r"/api/portfolios/(\d+)", parsed.path)
+        if portfolio_match:
+            user = self._require_user()
+            if not user:
+                return
+            portfolio = persistence_store().get_portfolio(user["user_id"], portfolio_match.group(1))
+            if not portfolio:
+                return self._json_response({"error": "Portfolio not found"}, status=HTTPStatus.NOT_FOUND)
+            return self._json_response({"portfolio": portfolio})
+        portfolio_runs_match = re.fullmatch(r"/api/portfolios/(\d+)/runs", parsed.path)
+        if portfolio_runs_match:
+            user = self._require_user()
+            if not user:
+                return
+            portfolio = persistence_store().get_portfolio(user["user_id"], portfolio_runs_match.group(1))
+            if not portfolio:
+                return self._json_response({"error": "Portfolio not found"}, status=HTTPStatus.NOT_FOUND)
+            runs = persistence_store().list_portfolio_runs(user["user_id"], portfolio_runs_match.group(1))
+            return self._json_response({"runs": [run_row_response(row) for row in runs]})
+        run_match = re.fullmatch(r"/api/portfolio-runs/([^/]+)", parsed.path)
+        if run_match:
+            user = self._require_user()
+            if not user:
+                return
+            run = persistence_store().get_portfolio_run_by_run_id(user["user_id"], urllib.parse.unquote(run_match.group(1)))
+            if not run:
+                return self._json_response({"error": "Portfolio run not found"}, status=HTTPStatus.NOT_FOUND)
+            return self._json_response({"run": run_row_response(run)})
         if parsed.path == "/api/runs":
             runs = find_available_run_ids()
             return self._json_response({"runs": runs, "latestRunId": runs[0] if runs else None})
@@ -6571,7 +7460,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             try:
                 params = parse_qs(parsed.query)
                 compact = _bool_for_api(params.get("compact", [False])[0], default=False)
-                dashboard = load_product_dashboard_data(compact=compact)
+                portfolio_id = params.get("portfolio_id", [None])[0]
+                portfolio_hash = params.get("portfolio_hash", [None])[0]
+                if portfolio_id or portfolio_hash:
+                    user = self._require_user()
+                    if not user:
+                        return
+                    dashboard = load_product_dashboard_for_saved_portfolio(
+                        user["user_id"],
+                        portfolio_id=portfolio_id,
+                        portfolio_hash=portfolio_hash,
+                        compact=compact,
+                    )
+                else:
+                    dashboard = load_product_dashboard_data(compact=compact)
                 if compact:
                     dashboard = compact_product_dashboard_payload(dashboard)
                 return self._json_response(dashboard)
@@ -6643,16 +7545,56 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path not in {"/api/run", "/api/price-lookup", "/api/portfolio/preview", "/api/refresh-market-data", "/api/refresh-intraday-news", "/api/product-dashboard"}:
+        analyze_match = re.fullmatch(r"/api/portfolios/(\d+)/analyze", parsed.path)
+        allowed_paths = {
+            "/api/auth/register",
+            "/api/auth/login",
+            "/api/auth/logout",
+            "/api/portfolios",
+            "/api/run",
+            "/api/price-lookup",
+            "/api/portfolio/preview",
+            "/api/refresh-market-data",
+            "/api/refresh-intraday-news",
+            "/api/product-dashboard",
+        }
+        if parsed.path not in allowed_paths and not analyze_match:
             self.send_error(HTTPStatus.NOT_FOUND, "Unknown endpoint")
             return
         if self._reject_non_local_client():
             return
+        if parsed.path == "/api/auth/logout":
+            payload, cookie = auth_logout(self.headers)
+            return self._json_response(payload, extra_headers={"Set-Cookie": cookie})
         content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
         if content_type != "application/json":
             return self._json_response({"error": "application/json 요청만 허용됩니다."}, status=HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
         try:
             payload = self._read_json_body()
+            if parsed.path == "/api/auth/register":
+                try:
+                    body, cookie = auth_register(payload)
+                except DuplicateEmailError:
+                    return self._json_response({"error": "Email is already registered."}, status=HTTPStatus.CONFLICT)
+                return self._json_response(body, status=HTTPStatus.CREATED, extra_headers={"Set-Cookie": cookie})
+            if parsed.path == "/api/auth/login":
+                try:
+                    body, cookie = auth_login(payload)
+                except PermissionError as exc:
+                    return self._json_response({"error": str(exc)}, status=HTTPStatus.UNAUTHORIZED)
+                return self._json_response(body, extra_headers={"Set-Cookie": cookie})
+            if parsed.path == "/api/portfolios":
+                user = self._require_user()
+                if not user:
+                    return
+                portfolio = save_portfolio_for_user(user["user_id"], payload)
+                return self._json_response({"portfolio": portfolio}, status=HTTPStatus.CREATED)
+            if analyze_match:
+                user = self._require_user()
+                if not user:
+                    return
+                result = launch_saved_portfolio_analysis(user["user_id"], analyze_match.group(1), payload)
+                return self._json_response(result, status=HTTPStatus.ACCEPTED)
             if parsed.path == "/api/price-lookup":
                 return self._json_response(
                     lookup_price(
@@ -6666,7 +7608,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return self._json_response(preview_portfolio(payload))
             if parsed.path == "/api/product-dashboard":
                 compact = _bool_for_api(payload.get("compact"), default=False)
-                dashboard = load_product_dashboard_for_portfolio(payload, compact=compact)
+                portfolio_id = payload.get("portfolioId") or payload.get("portfolio_id")
+                portfolio_hash = payload.get("portfolioHash") or payload.get("portfolio_hash")
+                if portfolio_id or portfolio_hash:
+                    user = self._require_user()
+                    if not user:
+                        return
+                    dashboard = load_product_dashboard_for_saved_portfolio(
+                        user["user_id"],
+                        portfolio_id=portfolio_id,
+                        portfolio_hash=portfolio_hash,
+                        compact=compact,
+                    )
+                else:
+                    dashboard = load_product_dashboard_for_portfolio(payload, compact=compact)
                 if compact:
                     dashboard = compact_product_dashboard_payload(dashboard)
                 return self._json_response(dashboard)
@@ -6678,6 +7633,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = launch_intraday_news_overlay_job(payload)
                 status = HTTPStatus.OK if result.get("status") == "skipped_latest" else HTTPStatus.ACCEPTED
                 return self._json_response(result, status=status)
+            portfolio_id = payload.get("portfolioId") or payload.get("portfolio_id")
+            if portfolio_id:
+                user = self._require_user()
+                if not user:
+                    return
+                result = launch_saved_portfolio_analysis(user["user_id"], portfolio_id, payload)
+                return self._json_response(result, status=HTTPStatus.ACCEPTED)
             prepared_request = prepare_run_request(payload)
             result = launch_run_job(prepared_request)
             return self._json_response(result, status=HTTPStatus.ACCEPTED)
@@ -6687,6 +7649,47 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return self._json_response({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
         except RuntimeError as exc:
             return self._json_response({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def do_PUT(self):
+        parsed = urlparse(self.path)
+        portfolio_match = re.fullmatch(r"/api/portfolios/(\d+)", parsed.path)
+        if not portfolio_match:
+            self.send_error(HTTPStatus.NOT_FOUND, "Unknown endpoint")
+            return
+        if self._reject_non_local_client():
+            return
+        user = self._require_user()
+        if not user:
+            return
+        content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            return self._json_response({"error": "application/json requests only"}, status=HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+        try:
+            payload = self._read_json_body()
+            portfolio = save_portfolio_for_user(user["user_id"], payload, portfolio_id=portfolio_match.group(1))
+            if not portfolio:
+                return self._json_response({"error": "Portfolio not found"}, status=HTTPStatus.NOT_FOUND)
+            return self._json_response({"portfolio": portfolio})
+        except RequestEntityTooLarge as exc:
+            return self._json_response({"error": str(exc)}, status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        except ValueError as exc:
+            return self._json_response({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        portfolio_match = re.fullmatch(r"/api/portfolios/(\d+)", parsed.path)
+        if not portfolio_match:
+            self.send_error(HTTPStatus.NOT_FOUND, "Unknown endpoint")
+            return
+        if self._reject_non_local_client():
+            return
+        user = self._require_user()
+        if not user:
+            return
+        deleted = persistence_store().delete_portfolio(user["user_id"], portfolio_match.group(1))
+        if not deleted:
+            return self._json_response({"error": "Portfolio not found"}, status=HTTPStatus.NOT_FOUND)
+        return self._json_response({"ok": True})
 
     def _read_json_body(self):
         raw_length = self.headers.get("Content-Length")
@@ -6705,17 +7708,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         except json.JSONDecodeError as exc:
             raise ValueError("잘못된 JSON 요청입니다.") from exc
 
-    def _json_response(self, payload, status=HTTPStatus.OK):
+    def _json_response(self, payload, status=HTTPStatus.OK, extra_headers=None):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        return self._binary_response(body, content_type="application/json; charset=utf-8", status=status)
+        return self._binary_response(body, content_type="application/json; charset=utf-8", status=status, extra_headers=extra_headers)
 
-    def _binary_response(self, body, content_type, status=HTTPStatus.OK):
+    def _binary_response(self, body, content_type, status=HTTPStatus.OK, extra_headers=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         self._send_common_security_headers()
+        for key, value in (extra_headers or {}).items():
+            if isinstance(value, (list, tuple)):
+                for item in value:
+                    self.send_header(key, str(item))
+            else:
+                self.send_header(key, str(value))
         self.send_header("Content-Length", str(len(body)))
         try:
             self.end_headers()
@@ -6766,6 +7775,11 @@ def parse_args(argv=None):
         action="store_true",
         help="Do not auto-refresh stale market/scenario/product outputs when the server starts.",
     )
+    parser.add_argument(
+        "--no-scheduler",
+        action="store_true",
+        help="Do not start the 3-hour common data refresh scheduler thread.",
+    )
     return parser.parse_args(argv)
 
 
@@ -6785,6 +7799,7 @@ def main(argv=None):
         raise SystemExit(
             "Refusing to expose the dashboard on a non-loopback host without --allow-remote-dashboard."
         )
+    persistence_store().init_db()
     server = ThreadingHTTPServer((args.host, args.port), DashboardHandler)
     print(f"HedgeMate dashboard running at http://{args.host}:{args.port}")
     if not args.no_startup_refresh:
@@ -6795,6 +7810,8 @@ def main(argv=None):
             print(f"Startup market refresh attached to existing job {startup_job.get('jobId')}.")
         else:
             print(f"Startup market refresh job {startup_job.get('jobId')} queued.")
+    if not args.no_scheduler:
+        start_scheduler_thread()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

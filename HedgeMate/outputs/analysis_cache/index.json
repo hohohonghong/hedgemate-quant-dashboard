@@ -4,7 +4,7 @@
     "6fd7ba092b67513d8cb5fc244dd08ce2b5d782b3423e3656ceb7ddf947498c6f": {
       "runId": "20260522T154637970342-496188c1",
       "cacheKey": "6fd7ba092b67513d8cb5fc244dd08ce2b5d782b3423e3656ceb7ddf947498c6f",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T154637970342-496188c1.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T154637970342-496188c1.json",
       "portfolioRequestHash": "6e18beb58aef9bda0e8dbd5f070bb7ecb6d2380510a82d168902e9d5393008a9",
       "portfolioRequestCanonical": "AAPL:q:10",
       "portfolioFingerprintHash": "5f2881d28c45507bb7a4e33fa02d83a8d7642327a9930bbf60a7d18a064fb837",
@@ -19,7 +19,7 @@
     "8bc30304c8f85729119ba7d9ab3abbb9f238d925a438c8f1550cac39254ec6c5": {
       "runId": "20260522T155949262774-269bf5ea",
       "cacheKey": "8bc30304c8f85729119ba7d9ab3abbb9f238d925a438c8f1550cac39254ec6c5",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T155949262774-269bf5ea.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T155949262774-269bf5ea.json",
       "portfolioRequestHash": "6e18beb58aef9bda0e8dbd5f070bb7ecb6d2380510a82d168902e9d5393008a9",
       "portfolioRequestCanonical": "AAPL:q:10",
       "portfolioFingerprintHash": "5f2881d28c45507bb7a4e33fa02d83a8d7642327a9930bbf60a7d18a064fb837",
@@ -34,7 +34,7 @@
     "b1dcd19052d6c6c4f92a055be0f61c478b34d1e8b88d31248c23600d6b1a01e4": {
       "runId": "20260522T160819397006-165522e4",
       "cacheKey": "b1dcd19052d6c6c4f92a055be0f61c478b34d1e8b88d31248c23600d6b1a01e4",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T160819397006-165522e4.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T160819397006-165522e4.json",
       "portfolioRequestHash": "6e18beb58aef9bda0e8dbd5f070bb7ecb6d2380510a82d168902e9d5393008a9",
       "portfolioRequestCanonical": "AAPL:q:10",
       "portfolioFingerprintHash": "5f2881d28c45507bb7a4e33fa02d83a8d7642327a9930bbf60a7d18a064fb837",
@@ -49,7 +49,7 @@
     "b6d532f048007cc4105a955eebc33c31f50f57356061ab44e1de77e94da878e5": {
       "runId": "20260522T162333711416-6e003a2d",
       "cacheKey": "b6d532f048007cc4105a955eebc33c31f50f57356061ab44e1de77e94da878e5",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T162333711416-6e003a2d.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T162333711416-6e003a2d.json",
       "portfolioRequestHash": "08dea6b3b955dc2698c3d7e88f224b28469e57acc29d0b937105ae62e6ced2db",
       "portfolioRequestCanonical": "005930.KS:q:3|035420.KS:q:2|035720.KS:q:8|NVDA:q:2",
       "portfolioFingerprintHash": "dc4d5969839306e52745e6d53f389fc7cddb2e206b5c169d5ed3b6a0b82946a7",
@@ -67,7 +67,7 @@
     "6fea29eaeadec1f868818c462c0b44b661833201fa14331e70715f56f5b81eca": {
       "runId": "20260522T163608501799-dd30f720",
       "cacheKey": "6fea29eaeadec1f868818c462c0b44b661833201fa14331e70715f56f5b81eca",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T163608501799-dd30f720.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T163608501799-dd30f720.json",
       "portfolioRequestHash": "6e18beb58aef9bda0e8dbd5f070bb7ecb6d2380510a82d168902e9d5393008a9",
       "portfolioRequestCanonical": "AAPL:q:10",
       "portfolioFingerprintHash": "5f2881d28c45507bb7a4e33fa02d83a8d7642327a9930bbf60a7d18a064fb837",
@@ -82,7 +82,7 @@
     "4b59f71ebc13f38338108985135ae034438e1819807c1e7d04bbbca12a6979bb": {
       "runId": "20260522T163804328650-8e189131",
       "cacheKey": "4b59f71ebc13f38338108985135ae034438e1819807c1e7d04bbbca12a6979bb",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T163804328650-8e189131.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T163804328650-8e189131.json",
       "portfolioRequestHash": "7703a518ed776d9c7bd42e0c9612835b8a74e18649954e74a6d2b43aab391e14",
       "portfolioRequestCanonical": "TSLA:q:10",
       "portfolioFingerprintHash": "fdf3df2788a61b91551c77331afda2bd23d57069bc0a8d720c23383de0bf6674",
@@ -97,7 +97,7 @@
     "dd697141360faae1a19a27684c0f4326727b5930ff8b0e4b587dd9bb9bb2df4d": {
       "runId": "20260522T163942201965-df48c4c9",
       "cacheKey": "dd697141360faae1a19a27684c0f4326727b5930ff8b0e4b587dd9bb9bb2df4d",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T163942201965-df48c4c9.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T163942201965-df48c4c9.json",
       "portfolioRequestHash": "e382e6c2936a1c63be32ab384da16826f6d16893536a4a0a5688ef5aa88b6a4f",
       "portfolioRequestCanonical": "MSFT:q:3|NVDA:q:2|TSLA:q:2",
       "portfolioFingerprintHash": "8bcacdabc1db2d17dac78d45416c4a7a19f5d9548e9aa93c1969e23bbe284c37",
@@ -114,7 +114,7 @@
     "5ee5f521d8fa07d590e9e81d7ced117444341284ab795435203851dc8936ef00": {
       "runId": "20260522T164124242770-bcedb0c4",
       "cacheKey": "5ee5f521d8fa07d590e9e81d7ced117444341284ab795435203851dc8936ef00",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T164124242770-bcedb0c4.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T164124242770-bcedb0c4.json",
       "portfolioRequestHash": "08dea6b3b955dc2698c3d7e88f224b28469e57acc29d0b937105ae62e6ced2db",
       "portfolioRequestCanonical": "005930.KS:q:3|035420.KS:q:2|035720.KS:q:8|NVDA:q:2",
       "portfolioFingerprintHash": "dc4d5969839306e52745e6d53f389fc7cddb2e206b5c169d5ed3b6a0b82946a7",
@@ -132,7 +132,7 @@
     "934291991bcfe79793e44605a109b68c26636949c85957a2115370fc139aa556": {
       "runId": "20260522T164310086621-e87e0585",
       "cacheKey": "934291991bcfe79793e44605a109b68c26636949c85957a2115370fc139aa556",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T164310086621-e87e0585.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T164310086621-e87e0585.json",
       "portfolioRequestHash": "577291032caf45c960fbd30f68fca9d27eefeed04c3f5b569a5d12963609ebe7",
       "portfolioRequestCanonical": "000660.KS:q:1|005930.KS:q:3|AVGO:q:1|NVDA:q:2",
       "portfolioFingerprintHash": "95776ab37c69f1513aac09ba54f50f5a6279b64e9b8dbf6239f3fae113f7112f",
@@ -150,7 +150,7 @@
     "b437b91ed824cb45d9d7d52c58820a0112f8d41af39a06909ba3de76b909423d": {
       "runId": "20260522T171439435117-ebd579be",
       "cacheKey": "b437b91ed824cb45d9d7d52c58820a0112f8d41af39a06909ba3de76b909423d",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T171439435117-ebd579be.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T171439435117-ebd579be.json",
       "portfolioRequestHash": "577291032caf45c960fbd30f68fca9d27eefeed04c3f5b569a5d12963609ebe7",
       "portfolioRequestCanonical": "000660.KS:q:1|005930.KS:q:3|AVGO:q:1|NVDA:q:2",
       "portfolioFingerprintHash": "95776ab37c69f1513aac09ba54f50f5a6279b64e9b8dbf6239f3fae113f7112f",
@@ -168,7 +168,7 @@
     "892d4d5a22a682328e5764cd42731a01de016f74491e7c9639e639c0b61c5e87": {
       "runId": "20260522T171835423886-0d6a6555",
       "cacheKey": "892d4d5a22a682328e5764cd42731a01de016f74491e7c9639e639c0b61c5e87",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T171835423886-0d6a6555.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T171835423886-0d6a6555.json",
       "portfolioRequestHash": "7703a518ed776d9c7bd42e0c9612835b8a74e18649954e74a6d2b43aab391e14",
       "portfolioRequestCanonical": "TSLA:q:10",
       "portfolioFingerprintHash": "fdf3df2788a61b91551c77331afda2bd23d57069bc0a8d720c23383de0bf6674",
@@ -183,7 +183,7 @@
     "93060e9125e047460f9544cf5733f6ca2fa3fa6df708611c5527fba35e16ecb3": {
       "runId": "20260522T172138132202-6e23dee3",
       "cacheKey": "93060e9125e047460f9544cf5733f6ca2fa3fa6df708611c5527fba35e16ecb3",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T172138132202-6e23dee3.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T172138132202-6e23dee3.json",
       "portfolioRequestHash": "e382e6c2936a1c63be32ab384da16826f6d16893536a4a0a5688ef5aa88b6a4f",
       "portfolioRequestCanonical": "MSFT:q:3|NVDA:q:2|TSLA:q:2",
       "portfolioFingerprintHash": "8bcacdabc1db2d17dac78d45416c4a7a19f5d9548e9aa93c1969e23bbe284c37",
@@ -200,7 +200,7 @@
     "62693f930d33c62e1bdae8b32fdeb950061f05996c457a85cb3c5c6488c327dc": {
       "runId": "20260522T172440282543-c1327bc2",
       "cacheKey": "62693f930d33c62e1bdae8b32fdeb950061f05996c457a85cb3c5c6488c327dc",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T172440282543-c1327bc2.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T172440282543-c1327bc2.json",
       "portfolioRequestHash": "08dea6b3b955dc2698c3d7e88f224b28469e57acc29d0b937105ae62e6ced2db",
       "portfolioRequestCanonical": "005930.KS:q:3|035420.KS:q:2|035720.KS:q:8|NVDA:q:2",
       "portfolioFingerprintHash": "dc4d5969839306e52745e6d53f389fc7cddb2e206b5c169d5ed3b6a0b82946a7",
@@ -218,7 +218,7 @@
     "a1057c0ce2a40d5e75bebde474517da8ae96bb212276a2a308fef09fff954d38": {
       "runId": "20260522T175236513689-5a48ae0c",
       "cacheKey": "a1057c0ce2a40d5e75bebde474517da8ae96bb212276a2a308fef09fff954d38",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\HedgeMate\\outputs\\analysis_cache\\20260522T175236513689-5a48ae0c.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260522T175236513689-5a48ae0c.json",
       "portfolioRequestHash": "54a0e059575cad66973ff7cce8c0078cccedd675766dc8ddc02b437f5ad3bc6c",
       "portfolioRequestCanonical": "MSFT:q:2",
       "portfolioFingerprintHash": "d0bd536928b03ecae8b0d8b1123b508b78fcc284318499d8f8c6edb36a1aa185",
@@ -233,7 +233,7 @@
     "969c6b2ec7a74a0512856924ec6e83c1c292aec97b51f649ea2a7737d7eeab70": {
       "runId": "20260528T193449194509-ffca0c77",
       "cacheKey": "969c6b2ec7a74a0512856924ec6e83c1c292aec97b51f649ea2a7737d7eeab70",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260528T193449194509-ffca0c77.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260528T193449194509-ffca0c77.json",
       "portfolioRequestHash": "08dea6b3b955dc2698c3d7e88f224b28469e57acc29d0b937105ae62e6ced2db",
       "portfolioRequestCanonical": "005930.KS:q:3|035420.KS:q:2|035720.KS:q:8|NVDA:q:2",
       "portfolioFingerprintHash": "893451f1496fa62852b37e1607b8d83280242ba72f823e2cb9a7b7aae8173038",
@@ -251,7 +251,7 @@
     "229d3f0da5c36fd60f7d4bb05971038ce7a6a431a4a53b5662df70d0b0a85fb0": {
       "runId": "20260528T175847200312-36e7bb10",
       "cacheKey": "229d3f0da5c36fd60f7d4bb05971038ce7a6a431a4a53b5662df70d0b0a85fb0",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260528T175847200312-36e7bb10.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260528T175847200312-36e7bb10.json",
       "portfolioRequestHash": "6e18beb58aef9bda0e8dbd5f070bb7ecb6d2380510a82d168902e9d5393008a9",
       "portfolioRequestCanonical": "AAPL:q:10",
       "portfolioFingerprintHash": "5f2881d28c45507bb7a4e33fa02d83a8d7642327a9930bbf60a7d18a064fb837",
@@ -266,7 +266,7 @@
     "b434fb4e116673dfc2431f5265278466944d881b0d2d179c0168a009b4ea5617": {
       "runId": "20260528T190331459016-1efd230e",
       "cacheKey": "b434fb4e116673dfc2431f5265278466944d881b0d2d179c0168a009b4ea5617",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260528T190331459016-1efd230e.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260528T190331459016-1efd230e.json",
       "portfolioRequestHash": "c6e65fdb94f79895a5905812ad286afa52a5025af6c67b409060831ee7f0faa1",
       "portfolioRequestCanonical": "005930.KS:q:300|BTC-USD:q:1|MSFT:q:199",
       "portfolioFingerprintHash": "8fa6aa3ba099810df2a13f8da10b43d1d5141f4bf5506d71cfbda6c18afc0cbd",
@@ -283,7 +283,7 @@
     "fdcb8fc4455635479bd239060ea44525fe310d53c1ac83c568c9d79db603282e": {
       "runId": "20260605T225345344426-c0d015ec",
       "cacheKey": "fdcb8fc4455635479bd239060ea44525fe310d53c1ac83c568c9d79db603282e",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260605T225345344426-c0d015ec.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260605T225345344426-c0d015ec.json",
       "portfolioRequestHash": "08dea6b3b955dc2698c3d7e88f224b28469e57acc29d0b937105ae62e6ced2db",
       "portfolioRequestCanonical": "005930.KS:q:3|035420.KS:q:2|035720.KS:q:8|NVDA:q:2",
       "portfolioFingerprintHash": "268a1b41b124469ca714d68a7e0be83cc48c1c5d88ce8f85b829c73d741ca0f4",
@@ -301,7 +301,7 @@
     "09380e110a58f642b960d6f02f825bb20b477565872070de858b8bf0132aab5a": {
       "runId": "20260605T211450680476-a54b02fb",
       "cacheKey": "09380e110a58f642b960d6f02f825bb20b477565872070de858b8bf0132aab5a",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260605T211450680476-a54b02fb.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260605T211450680476-a54b02fb.json",
       "portfolioRequestHash": "2c0d75415d23bcf6b59567fdda47e633e9737e05f5fdfe412d443b2f792327b2",
       "portfolioRequestCanonical": "005930.KS:q:10|035420.KS:q:13|035720.KS:q:82|NVDA:q:10",
       "portfolioFingerprintHash": "dd5b0921a5432821bbfba57969238bfaa21382ea3003687a30a9a1c71541485e",
@@ -319,7 +319,7 @@
     "7f4ca6407bac96ae800ffe9db0fc1dcb0d58190c9d13383bbf823a6160415eb9": {
       "runId": "20260605T183750606455-63c5c686",
       "cacheKey": "7f4ca6407bac96ae800ffe9db0fc1dcb0d58190c9d13383bbf823a6160415eb9",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260605T183750606455-63c5c686.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260605T183750606455-63c5c686.json",
       "portfolioRequestHash": "54a0e059575cad66973ff7cce8c0078cccedd675766dc8ddc02b437f5ad3bc6c",
       "portfolioRequestCanonical": "MSFT:q:2",
       "portfolioFingerprintHash": "d0bd536928b03ecae8b0d8b1123b508b78fcc284318499d8f8c6edb36a1aa185",
@@ -334,7 +334,7 @@
     "2d44047d97340be88235783101e6608254ef443df995e3187ce21f273a547328": {
       "runId": "20260610T180128995827-0daf6dda",
       "cacheKey": "2d44047d97340be88235783101e6608254ef443df995e3187ce21f273a547328",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260610T180128995827-0daf6dda.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260610T180128995827-0daf6dda.json",
       "portfolioRequestHash": "c6e65fdb94f79895a5905812ad286afa52a5025af6c67b409060831ee7f0faa1",
       "portfolioRequestCanonical": "005930.KS:q:300|BTC-USD:q:1|MSFT:q:199",
       "portfolioFingerprintHash": "b2ec045630c566c3981b993fc83af3cec3eb0f42b7249e650265c51ddeae7ab9",
@@ -351,7 +351,7 @@
     "ab38d5221fcbef3e7501d4a6210b6ce5d414a9da109be065350002959a993a8a": {
       "runId": "20260610T181158314456-36220963",
       "cacheKey": "ab38d5221fcbef3e7501d4a6210b6ce5d414a9da109be065350002959a993a8a",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260610T181158314456-36220963.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260610T181158314456-36220963.json",
       "portfolioRequestHash": "bd8b9648c858fa0555494407c3e59a06ff240af101c076bac598590c5d84f23c",
       "portfolioRequestCanonical": "AAPL:q:5|MSFT:q:3|TSLA:q:1",
       "portfolioFingerprintHash": "abae9f791ff0add11b901cc842ecbf68fabcb564c7360ba3009bac8ed2a7a142",
@@ -368,7 +368,7 @@
     "9557b63c625c3eb4d5c8ff7444737da2c25f3c4aa2b3e9154558343030bc0977": {
       "runId": "20260610T191953943306-da0898b3",
       "cacheKey": "9557b63c625c3eb4d5c8ff7444737da2c25f3c4aa2b3e9154558343030bc0977",
-      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260610T191953943306-da0898b3.json",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260610T191953943306-da0898b3.json",
       "portfolioRequestHash": "08dea6b3b955dc2698c3d7e88f224b28469e57acc29d0b937105ae62e6ced2db",
       "portfolioRequestCanonical": "005930.KS:q:3|035420.KS:q:2|035720.KS:q:8|NVDA:q:2",
       "portfolioFingerprintHash": "171ae82b0fc11a54f7cb3ff130c0add3d5c6036cb00a553da68dd0e5590639be",
@@ -381,6 +381,23 @@
       ],
       "dataVersion": "20260610",
       "generatedAtUtc": "2026-06-10T10:23:59Z",
+      "engineVersion": "hedgemate_action_contract_v5"
+    },
+    "025b7b64091767a06e6a52f1deb94965a9578068c89f40bcba0252263fee1f6b": {
+      "runId": "20260610T234722934082-d6e95bcc",
+      "cacheKey": "025b7b64091767a06e6a52f1deb94965a9578068c89f40bcba0252263fee1f6b",
+      "manifestPath": "HedgeMate/outputs/analysis_cache/20260610T234722934082-d6e95bcc.json",
+      "portfolioRequestHash": "4a22bd4482a73d5201b9ff988e9ba831ac9d778a30b1e8e7808bc19a1771601d",
+      "portfolioRequestCanonical": "AAPL:q:5|GLD:q:4|MSFT:q:2",
+      "portfolioFingerprintHash": "7e62544230c9103df105ec9637dfaed4e540b45a0023c393d5bc755e45b01ffd",
+      "portfolioInputSha256": "9abd6740035e6c0aab476d5957c4f866b0ef3365083ec4e80abe379d79e2ffc3",
+      "portfolioTickers": [
+        "AAPL",
+        "GLD",
+        "MSFT"
+      ],
+      "dataVersion": "20260610",
+      "generatedAtUtc": "2026-06-10T14:48:49Z",
       "engineVersion": "hedgemate_action_contract_v5"
     }
   }

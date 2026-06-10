@@ -1,114 +1,104 @@
 {
   "manifest_version": "hedgemate_active_bundle_v1",
-  "generated_at_utc": "2026-06-10T10:23:59Z",
+  "generated_at_utc": "2026-06-10T14:48:49Z",
   "freshness_status": "FRESH",
   "stale_reasons": [],
   "active_bundle": {
     "scenario_run": "scenario-refresh-20260610",
     "final_market_state_run": "final-refresh-20260610",
-    "hedgemate_run": "20260610T191953943306-da0898b3",
-    "backtest_run": "backtest-20260610T191953943306-da0898b3",
+    "hedgemate_run": "20260610T234722934082-d6e95bcc",
+    "backtest_run": "backtest-20260610T234722934082-d6e95bcc",
     "data_version": "20260610",
     "scenario_vector_as_of_date": "2026-06-09",
-    "generated_at_utc": "2026-06-10T10:23:59Z",
+    "generated_at_utc": "2026-06-10T14:48:49Z",
     "freshness_status": "FRESH",
     "stale_reasons": [],
     "portfolio_input_fingerprint": {
-      "hash": "171ae82b0fc11a54f7cb3ff130c0add3d5c6036cb00a553da68dd0e5590639be",
-      "ticker_count": 4,
-      "total_weight_pct": 100.0001,
-      "tickers": [
-        "005930.KS",
-        "035420.KS",
-        "035720.KS",
-        "NVDA"
-      ],
-      "weights": {
-        "005930.KS": 39.4396,
-        "035420.KS": 19.7307,
-        "035720.KS": 13.2639,
-        "NVDA": 27.5659
-      },
-      "path": "HedgeMate/outputs/run_inputs/20260610T191953943306-da0898b3/portfolio_weights.csv"
-    },
-    "portfolioTickers": [
-      "005930.KS",
-      "035420.KS",
-      "035720.KS",
-      "NVDA"
-    ],
-    "portfolioInputPersisted": true,
-    "portfolioInputSha256": "2f95a103676f2be1fbd4f0dd1859ad4d5c9d925cddf60ae06c23d72026b016a7",
-    "recommendation_portfolio_fingerprint": {
-      "hash": "9a30128deadce809e95f74624a60f646d06dab3a6d43005418fb82307e4e9596",
-      "ticker_count": 4,
+      "hash": "7e62544230c9103df105ec9637dfaed4e540b45a0023c393d5bc755e45b01ffd",
+      "ticker_count": 3,
       "total_weight_pct": 100.0,
       "tickers": [
-        "005930.KS",
-        "035420.KS",
-        "035720.KS",
-        "NVDA"
+        "AAPL",
+        "GLD",
+        "MSFT"
       ],
       "weights": {
-        "005930.KS": 39.4396,
-        "035420.KS": 19.7307,
-        "035720.KS": 13.2638,
-        "NVDA": 27.5659
+        "AAPL": 38.2932,
+        "GLD": 40.3526,
+        "MSFT": 21.3542
       },
-      "source_artifact": "HedgeMate/outputs/reports/portfolio_1to1_hedge_20260610T191953943306-da0898b3_backtest_gated.csv",
-      "source_candidate": "261240.KS"
+      "path": "HedgeMate/outputs/run_inputs/20260610T234722934082-d6e95bcc/portfolio_weights.csv"
+    },
+    "portfolioTickers": [
+      "AAPL",
+      "GLD",
+      "MSFT"
+    ],
+    "portfolioInputPersisted": true,
+    "portfolioInputSha256": "9abd6740035e6c0aab476d5957c4f866b0ef3365083ec4e80abe379d79e2ffc3",
+    "recommendation_portfolio_fingerprint": {
+      "hash": "7e62544230c9103df105ec9637dfaed4e540b45a0023c393d5bc755e45b01ffd",
+      "ticker_count": 3,
+      "total_weight_pct": 100.0,
+      "tickers": [
+        "AAPL",
+        "GLD",
+        "MSFT"
+      ],
+      "weights": {
+        "AAPL": 38.2932,
+        "GLD": 40.3526,
+        "MSFT": 21.3542
+      },
+      "source_artifact": "HedgeMate/outputs/reports/portfolio_1to1_hedge_20260610T234722934082-d6e95bcc_backtest_gated.csv",
+      "source_candidate": "153130.KS"
     }
   },
   "active_scenario_run": "scenario-refresh-20260610",
   "active_final_run": "final-refresh-20260610",
-  "active_hedgemate_run": "20260610T191953943306-da0898b3",
-  "active_backtest_run": "backtest-20260610T191953943306-da0898b3",
+  "active_hedgemate_run": "20260610T234722934082-d6e95bcc",
+  "active_backtest_run": "backtest-20260610T234722934082-d6e95bcc",
   "data_version": "20260610",
   "scenario_vector_as_of_date": "2026-06-09",
   "portfolio_input_fingerprint": {
-    "hash": "171ae82b0fc11a54f7cb3ff130c0add3d5c6036cb00a553da68dd0e5590639be",
-    "ticker_count": 4,
-    "total_weight_pct": 100.0001,
-    "tickers": [
-      "005930.KS",
-      "035420.KS",
-      "035720.KS",
-      "NVDA"
-    ],
-    "weights": {
-      "005930.KS": 39.4396,
-      "035420.KS": 19.7307,
-      "035720.KS": 13.2639,
-      "NVDA": 27.5659
-    },
-    "path": "HedgeMate/outputs/run_inputs/20260610T191953943306-da0898b3/portfolio_weights.csv"
-  },
-  "portfolioTickers": [
-    "005930.KS",
-    "035420.KS",
-    "035720.KS",
-    "NVDA"
-  ],
-  "portfolioInputPersisted": true,
-  "portfolioInputSha256": "2f95a103676f2be1fbd4f0dd1859ad4d5c9d925cddf60ae06c23d72026b016a7",
-  "recommendation_portfolio_fingerprint": {
-    "hash": "9a30128deadce809e95f74624a60f646d06dab3a6d43005418fb82307e4e9596",
-    "ticker_count": 4,
+    "hash": "7e62544230c9103df105ec9637dfaed4e540b45a0023c393d5bc755e45b01ffd",
+    "ticker_count": 3,
     "total_weight_pct": 100.0,
     "tickers": [
-      "005930.KS",
-      "035420.KS",
-      "035720.KS",
-      "NVDA"
+      "AAPL",
+      "GLD",
+      "MSFT"
     ],
     "weights": {
-      "005930.KS": 39.4396,
-      "035420.KS": 19.7307,
-      "035720.KS": 13.2638,
-      "NVDA": 27.5659
+      "AAPL": 38.2932,
+      "GLD": 40.3526,
+      "MSFT": 21.3542
     },
-    "source_artifact": "HedgeMate/outputs/reports/portfolio_1to1_hedge_20260610T191953943306-da0898b3_backtest_gated.csv",
-    "source_candidate": "261240.KS"
+    "path": "HedgeMate/outputs/run_inputs/20260610T234722934082-d6e95bcc/portfolio_weights.csv"
+  },
+  "portfolioTickers": [
+    "AAPL",
+    "GLD",
+    "MSFT"
+  ],
+  "portfolioInputPersisted": true,
+  "portfolioInputSha256": "9abd6740035e6c0aab476d5957c4f866b0ef3365083ec4e80abe379d79e2ffc3",
+  "recommendation_portfolio_fingerprint": {
+    "hash": "7e62544230c9103df105ec9637dfaed4e540b45a0023c393d5bc755e45b01ffd",
+    "ticker_count": 3,
+    "total_weight_pct": 100.0,
+    "tickers": [
+      "AAPL",
+      "GLD",
+      "MSFT"
+    ],
+    "weights": {
+      "AAPL": 38.2932,
+      "GLD": 40.3526,
+      "MSFT": 21.3542
+    },
+    "source_artifact": "HedgeMate/outputs/reports/portfolio_1to1_hedge_20260610T234722934082-d6e95bcc_backtest_gated.csv",
+    "source_candidate": "153130.KS"
   },
   "portfolio_input_mismatch": false,
   "artifacts": {
@@ -119,27 +109,27 @@
     "finalScenarioVector": "scenario_research/outputs/scenario_vectors/current_scenario_vector_final-refresh-20260610.csv",
     "finalMetadata": "scenario_research/outputs/reports/final_market_state_metadata_final-refresh-20260610.json",
     "eventOverlayMetadata": "scenario_research/outputs/reports/event_overlay_metadata_event-refresh-20260605.json",
-    "features": "HedgeMate/outputs/processed/features_summary_20260610T191953943306-da0898b3.csv",
-    "portfolioInput": "HedgeMate/outputs/run_inputs/20260610T191953943306-da0898b3/portfolio_weights.csv",
-    "assetScenarioSensitivity": "HedgeMate/outputs/processed/asset_scenario_sensitivity_20260610T191953943306-da0898b3.csv",
-    "portfolioVulnerabilityAttribution": "HedgeMate/outputs/processed/portfolio_vulnerability_attribution_20260610T191953943306-da0898b3.csv",
-    "portfolioVulnerabilitySummary": "HedgeMate/outputs/reports/portfolio_vulnerability_summary_20260610T191953943306-da0898b3.json",
-    "hedgeActionCandidates": "HedgeMate/outputs/reports/hedge_action_candidates_20260610T191953943306-da0898b3.csv",
-    "hedgeActionPlan": "HedgeMate/outputs/reports/hedge_action_plan_20260610T191953943306-da0898b3.json",
-    "hedgeActionPlanSummary": "HedgeMate/outputs/reports/hedge_action_plan_summary_20260610T191953943306-da0898b3.md",
-    "portfolio1to1": "HedgeMate/outputs/reports/portfolio_1to1_hedge_20260610T191953943306-da0898b3_backtest_gated.csv",
-    "portfolioMulti": "HedgeMate/outputs/reports/portfolio_multi_hedge_20260610T191953943306-da0898b3_backtest_gated.csv",
-    "recommendationStatusQa": "HedgeMate/outputs/reports/recommendation_status_qa_post_backtest_20260610T191953943306-da0898b3_backtest_gated.md",
-    "backtestCsv": "HedgeMate/outputs/validation/walk_forward_backtest_backtest-20260610T191953943306-da0898b3.csv",
-    "backtestSummary": "HedgeMate/outputs/reports/walk_forward_backtest_summary_backtest-20260610T191953943306-da0898b3.md",
-    "backtestGateSummary": "HedgeMate/outputs/reports/backtest_gate_summary_20260610T191953943306-da0898b3_backtest_gated.md",
-    "backtestAttributionCsv": "HedgeMate/outputs/reports/backtest_attribution_backtest-20260610T191953943306-da0898b3.csv",
-    "backtestAttributionSummary": "HedgeMate/outputs/reports/backtest_attribution_backtest-20260610T191953943306-da0898b3.md",
-    "formalGateAuditCsv": "HedgeMate/outputs/reports/formal_gate_audit_20260610T191953943306-da0898b3_backtest_gated.csv",
-    "formalGateAuditSummary": "HedgeMate/outputs/reports/formal_gate_audit_20260610T191953943306-da0898b3_backtest_gated.md",
+    "features": "HedgeMate/outputs/processed/features_summary_20260610T234722934082-d6e95bcc.csv",
+    "portfolioInput": "HedgeMate/outputs/run_inputs/20260610T234722934082-d6e95bcc/portfolio_weights.csv",
+    "assetScenarioSensitivity": "HedgeMate/outputs/processed/asset_scenario_sensitivity_20260610T234722934082-d6e95bcc.csv",
+    "portfolioVulnerabilityAttribution": "HedgeMate/outputs/processed/portfolio_vulnerability_attribution_20260610T234722934082-d6e95bcc.csv",
+    "portfolioVulnerabilitySummary": "HedgeMate/outputs/reports/portfolio_vulnerability_summary_20260610T234722934082-d6e95bcc.json",
+    "hedgeActionCandidates": "HedgeMate/outputs/reports/hedge_action_candidates_20260610T234722934082-d6e95bcc.csv",
+    "hedgeActionPlan": "HedgeMate/outputs/reports/hedge_action_plan_20260610T234722934082-d6e95bcc.json",
+    "hedgeActionPlanSummary": "HedgeMate/outputs/reports/hedge_action_plan_summary_20260610T234722934082-d6e95bcc.md",
+    "portfolio1to1": "HedgeMate/outputs/reports/portfolio_1to1_hedge_20260610T234722934082-d6e95bcc_backtest_gated.csv",
+    "portfolioMulti": "HedgeMate/outputs/reports/portfolio_multi_hedge_20260610T234722934082-d6e95bcc_backtest_gated.csv",
+    "recommendationStatusQa": "HedgeMate/outputs/reports/recommendation_status_qa_post_backtest_20260610T234722934082-d6e95bcc_backtest_gated.md",
+    "backtestCsv": "HedgeMate/outputs/validation/walk_forward_backtest_backtest-20260610T234722934082-d6e95bcc.csv",
+    "backtestSummary": "HedgeMate/outputs/reports/walk_forward_backtest_summary_backtest-20260610T234722934082-d6e95bcc.md",
+    "backtestGateSummary": "HedgeMate/outputs/reports/backtest_gate_summary_20260610T234722934082-d6e95bcc_backtest_gated.md",
+    "backtestAttributionCsv": "HedgeMate/outputs/reports/backtest_attribution_backtest-20260610T234722934082-d6e95bcc.csv",
+    "backtestAttributionSummary": "HedgeMate/outputs/reports/backtest_attribution_backtest-20260610T234722934082-d6e95bcc.md",
+    "formalGateAuditCsv": "HedgeMate/outputs/reports/formal_gate_audit_20260610T234722934082-d6e95bcc_backtest_gated.csv",
+    "formalGateAuditSummary": "HedgeMate/outputs/reports/formal_gate_audit_20260610T234722934082-d6e95bcc_backtest_gated.md",
     "finalRunbook": "HedgeMate/outputs/reports/final_product_runbook_hedgemate-refresh-20260605.md",
-    "latestIntradayNewsOverlay": "scenario_research/outputs/news_intraday/news_top5_curated-finance-news-20260610.json",
-    "intradayNewsOverlayMetadata": "scenario_research/outputs/news_intraday/news_overlay_metadata_curated-finance-news-20260610.json"
+    "latestIntradayNewsOverlay": "scenario_research/outputs/news_intraday/news_top5_intraday-news-refresh-20260610T235708.json",
+    "intradayNewsOverlayMetadata": "scenario_research/outputs/news_intraday/news_overlay_metadata_intraday-news-refresh-20260610T235708.json"
   },
   "event_overlay_status": {
     "mode": "reviewed_fixture",
@@ -151,28 +141,28 @@
     "metadata_schema_error_count": 0,
     "metadata_fatal_schema_error_count": 0
   },
-  "latestIntradayNewsOverlay": "scenario_research/outputs/news_intraday/news_top5_curated-finance-news-20260610.json",
+  "latestIntradayNewsOverlay": "scenario_research/outputs/news_intraday/news_top5_intraday-news-refresh-20260610T235708.json",
   "intradayNewsOverlayStatus": {
     "status": "success",
-    "runId": "curated-finance-news-20260610",
+    "runId": "intraday-news-refresh-20260610T235708",
     "jobType": "intraday_news_overlay",
-    "generatedAtKst": "2026-06-10T19:33:17.002127+09:00",
-    "refreshWindowKst": "2026-06-10T15:00:00+09:00",
+    "generatedAtKst": "2026-06-10T23:57:08.431712+09:00",
+    "refreshWindowKst": "2026-06-10T21:00:00+09:00",
     "allowedRefreshHoursKst": [
       9,
       15,
       21
     ],
     "top5Count": 5,
-    "provider": "fallback_after_gemini_error",
+    "provider": "fallback_fixture",
     "fallbackUsed": true,
-    "fallbackReason": "HTTPError",
+    "fallbackReason": "missing_gemini_api_key",
     "geminiModel": "gemini-2.5-flash-lite",
-    "geminiKeySource": "project/.secrets/gemini_api_key.txt",
+    "geminiKeySource": "missing",
     "marketStateUsage": "intraday_explanatory_overlay_only",
     "reportRecommendationUsage": "disabled",
-    "metadataPath": "scenario_research/outputs/news_intraday/news_overlay_metadata_curated-finance-news-20260610.json",
-    "top5Path": "scenario_research/outputs/news_intraday/news_top5_curated-finance-news-20260610.json"
+    "metadataPath": "scenario_research/outputs/news_intraday/news_overlay_metadata_intraday-news-refresh-20260610T235708.json",
+    "top5Path": "scenario_research/outputs/news_intraday/news_top5_intraday-news-refresh-20260610T235708.json"
   },
   "intradayNewsTop5": [
     {
@@ -187,7 +177,7 @@
       "region": "korea",
       "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
       "direction": "semiconductor_down",
-      "severity": 68.420625,
+      "severity": 65.12241,
       "novelty": 50.0,
       "timeHorizon": "intraday",
       "scenarioLinks": [
@@ -201,93 +191,93 @@
     },
     {
       "date": "2026-06-10",
-      "source": "서울경제",
-      "sourceKo": "서울경제",
-      "title": "최태원 “차기 반도체 공장 입지, 지역·해외 등 다각도 검토” - 서울경제",
-      "displayTitleKo": "최태원 “차기 반도체 공장 입지, 지역·해외 등 다각도 검토” - 서울경제",
-      "url": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE9CNG5aR2lsZzU2eUJUYW5fRE1FWUgyQ0FQdXg0S05vcWZneURGNUFaanVLM2FPLTlMaEloNHdDNjcxWDluSjFzN1NjdjVDVk9VcEHSAVNBVV95cUxQQjliN0N4R2p1aTlHS0p5RFlzYmZpTVZOdnVBNXg2ZmFpQU5jOTlvYzdRdDFZdVQ1ZzNYZlU3M1Zod0lWMklLREFMVURRR0c4UUxlcw?oc=5",
-      "eventType": "semiconductor",
-      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
-      "region": "korea",
-      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
-      "direction": "semiconductor_down",
-      "severity": 62.175208,
-      "novelty": 50.0,
-      "timeHorizon": "intraday",
-      "scenarioLinks": [
-        "semiconductor_ai_cycle_shock"
-      ],
-      "evidenceSpan": "최태원 “차기 반도체 공장 입지, 지역·해외 등 다각도 검토” 서울경제",
-      "displaySummaryKo": "최태원 “차기 반도체 공장 입지, 지역·해외 등 다각도 검토” 서울경제",
-      "confidence": 65.0,
-      "needsReview": false
-    },
-    {
-      "date": "2026-06-10",
-      "source": "연합뉴스",
-      "sourceKo": "연합뉴스",
-      "title": "[속보] 코스피 급락에 매도 사이드카 발동 - 연합뉴스",
-      "displayTitleKo": "[속보] 코스피 급락에 매도 사이드카 발동 - 연합뉴스",
-      "url": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE5ydDczRHdKWHVQSGNVSnJIOGJETm0wUUFVc1Fvei1HUENfSjdISjVlNk1hV2JFTVp3bmlDRVdOM0pUU2NURk5xUG5BVmxkZklHb19MY3l3bFdTVEHSAWBBVV95cUxOZjAyX3RfTC1yVHZ2dGI1NHNua2xXNnFtWXpfWmFPdDJSX3BkUGJ3MkQwQldPSnZSVnVHY1FrazhGTmdRNmFmc0tUUFdvME45cjBFbkFBS3RkNDRVak1CQ3I?oc=5",
-      "eventType": "semiconductor",
-      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
-      "region": "korea",
-      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
-      "direction": "semiconductor_down",
-      "severity": 60.300833,
-      "novelty": 50.0,
-      "timeHorizon": "intraday",
-      "scenarioLinks": [
-        "semiconductor_ai_cycle_shock"
-      ],
-      "evidenceSpan": "[속보] 코스피 급락에 매도 사이드카 발동 연합뉴스",
-      "displaySummaryKo": "[속보] 코스피 급락에 매도 사이드카 발동 연합뉴스",
-      "confidence": 65.0,
-      "needsReview": false
-    },
-    {
-      "date": "2026-06-10",
       "source": "한국경제",
       "sourceKo": "한국경제",
-      "title": "20% 빠졌는데 지금 사라?…삼전·SK하닉에 무슨 일이 - 한국경제",
-      "displayTitleKo": "20% 빠졌는데 지금 사라?…삼전·SK하닉에 무슨 일이 - 한국경제",
-      "url": "https://news.google.com/rss/articles/CBMiWkFVX3lxTE04U1pRanZrOUtTdV9uV0FnTlp5Q2tkdFJGSHFCT1k4MDJIMEtvWjR4RmttTGh4N0dRT05DdkVhZnd6VUtqZ3JyYWFreHk4eTE3M0ZiSWt0MXJ1d9IBVEFVX3lxTE53YnVyZUNFdTNGcVlRemc5dnF6YmJrQ2lZNjl4S3N3ZVRyYlI3dDNNTGNlVUFVa2RGZURsdGEwRGJQcnE0MnFmQi1BeU9vZm5rRDYxRQ?oc=5",
+      "title": "\"반도체 훈풍 왜 정규직만\"…민주노총, 대기업 '성과급 잔치' 직격 - 한국경제",
+      "displayTitleKo": "\"반도체 훈풍 왜 정규직만\"…민주노총, 대기업 '성과급 잔치' 직격 - 한국경제",
+      "url": "https://news.google.com/rss/articles/CBMiWkFVX3lxTE9Hb0tVY0RXZGZZWGJkc0F6cVFaNzA4QUxyeXBqaURzak8wLWpJalZQWTVqMlJtUVp5YWt1NEtVLUdsbVR1S2ZrQ0Z6NGFhMERLSUxfbm1ETG9Rd9IBVEFVX3lxTE02S0JqT2Y3ZXdpQjk1dWlWSy1FVzdjMFI2NTZ2cV9YbjlWcE00RmlMOEx6cW9sSkt1MXdKd09yREhYOWhHanNrOXFubG9uNGYxQ0JmNQ?oc=5",
       "eventType": "semiconductor",
       "riskLabelKo": "반도체 · 반도체 투자심리 약화",
       "region": "korea",
       "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
       "direction": "semiconductor_down",
-      "severity": 59.835208,
+      "severity": 64.16241,
       "novelty": 50.0,
       "timeHorizon": "intraday",
       "scenarioLinks": [
         "semiconductor_ai_cycle_shock"
       ],
-      "evidenceSpan": "20% 빠졌는데 지금 사라?…삼전·SK하닉에 무슨 일이 한국경제",
-      "displaySummaryKo": "20% 빠졌는데 지금 사라?…삼전·SK하닉에 무슨 일이 한국경제",
+      "evidenceSpan": "\"반도체 훈풍 왜 정규직만\"…민주노총, 대기업 '성과급 잔치' 직격 한국경제",
+      "displaySummaryKo": "\"반도체 훈풍 왜 정규직만\"…민주노총, 대기업 '성과급 잔치' 직격 한국경제",
       "confidence": 65.0,
       "needsReview": false
     },
     {
       "date": "2026-06-10",
-      "source": "매일경제",
-      "sourceKo": "매일경제",
-      "title": "“코스피 급락 땡큐, 은행빚 땡겨서 풀매수”…이틀간 마통 6천억 늘었다 - 매일경제",
-      "displayTitleKo": "“코스피 급락 땡큐, 은행빚 땡겨서 풀매수”…이틀간 마통 6천억 늘었다 - 매일경제",
-      "url": "https://news.google.com/rss/articles/CBMiVEFVX3lxTE5uN01zc3BBdDRiY1YzTlNBak1reFFodk5fTF9aa1VVdFM0SHpLR0FRd0o2QTJnV3VSZ3NmN3A2dTNsMlRqMGxfUEpYdVRkVHc3Z1R5cQ?oc=5",
+      "source": "이데일리",
+      "sourceKo": "이데일리",
+      "title": "광범위한 수요로 글로벌 반도체 산업 대폭 확장…마이크론, TSMC 등 최선호-UBS - 이데일리",
+      "displayTitleKo": "광범위한 수요로 글로벌 반도체 산업 대폭 확장…마이크론, TSMC 등 최선호-UBS - 이데일리",
+      "url": "https://news.google.com/rss/articles/CBMigAFBVV95cUxPenh3UThzOHR0UnpZcVVyOXQ1RndGcWVxWlhwbTRDNVhOTDhEZXlneC0xX28wZjlSc0lRWEJqOEdpRVdod2xDQmhGVnJobE1yZ2lVdTRzNWdTMUNPcGFMRjNoNkp4aUpVSk1zNHE0WTJNeE13U2tnS0NpRlJnRExMcQ?oc=5",
       "eventType": "semiconductor",
       "riskLabelKo": "반도체 · 반도체 투자심리 약화",
       "region": "korea",
       "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
       "direction": "semiconductor_down",
-      "severity": 56.945625,
+      "severity": 62.937618,
       "novelty": 50.0,
       "timeHorizon": "intraday",
       "scenarioLinks": [
         "semiconductor_ai_cycle_shock"
       ],
-      "evidenceSpan": "“코스피 급락 땡큐, 은행빚 땡겨서 풀매수”…이틀간 마통 6천억 늘었다 매일경제",
-      "displaySummaryKo": "“코스피 급락 땡큐, 은행빚 땡겨서 풀매수”…이틀간 마통 6천억 늘었다 매일경제",
+      "evidenceSpan": "광범위한 수요로 글로벌 반도체 산업 대폭 확장…마이크론, TSMC 등 최선호-UBS 이데일리",
+      "displaySummaryKo": "광범위한 수요로 글로벌 반도체 산업 대폭 확장…마이크론, TSMC 등 최선호-UBS 이데일리",
+      "confidence": 65.0,
+      "needsReview": false
+    },
+    {
+      "date": "2026-06-10",
+      "source": "이데일리",
+      "sourceKo": "이데일리",
+      "title": "하락 방어 움직임 커졌다…“코스피 추가 하락 경고등” - 이데일리",
+      "displayTitleKo": "하락 방어 움직임 커졌다…“코스피 추가 하락 경고등” - 이데일리",
+      "url": "https://news.google.com/rss/articles/CBMigAFBVV95cUxON2ZRQWcxN0JHSjhDeTBqZkt0VUdzeDVWTFlLZDdwakdrWVZNRjB6Y0Y1TTFabGZFZUtqSW5jUWpFaTJFdjV6ejBYNDV2TnBKWFI2YUpzOVk2SEh1cUZKN21IdXRFTnNtekl6TlUya2xsRnl0NXNtbmMtZWVqVF9Fbg?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 60.32116,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "하락 방어 움직임 커졌다…“코스피 추가 하락 경고등” 이데일리",
+      "displaySummaryKo": "하락 방어 움직임 커졌다…“코스피 추가 하락 경고등” 이데일리",
+      "confidence": 65.0,
+      "needsReview": false
+    },
+    {
+      "date": "2026-06-10",
+      "source": "서울경제",
+      "sourceKo": "서울경제",
+      "title": "예측불허 반도체…피크아웃 전략 짠다 - 서울경제",
+      "displayTitleKo": "예측불허 반도체…피크아웃 전략 짠다 - 서울경제",
+      "url": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE8wWU01aVQ1TS1IZnNtZ3NsRzlFdDNiaXJoeS1vYklfMjM2RmVfd0N2b2NOc2pvUzFQSFUzUm9OY29aeWpJdXh5cFVQdXZ5eGdPQlHSAVNBVV95cUxPWU80NzlnMGwyV0JuQmFURXdfelJ3Ul9pYTJMVFNZTHlZa1N6V0ZqRE04V1pUM3Zpb0p4TkFOa084SlFRTGNXU3JDd2k3b1BEUUpaSQ?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 59.908035,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "예측불허 반도체…피크아웃 전략 짠다 서울경제",
+      "displaySummaryKo": "예측불허 반도체…피크아웃 전략 짠다 서울경제",
       "confidence": 65.0,
       "needsReview": false
     }
