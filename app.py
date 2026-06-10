@@ -17,19 +17,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 PUBLIC_PORT = int(os.environ.get("PORT", "8000"))
 BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8766"))
+NO_STARTUP_REFRESH_VALUES = {"1", "true", "yes", "on"}
+
+
+def startup_refresh_disabled():
+    return os.environ.get("HEDGEMATE_NO_STARTUP_REFRESH", "").strip().lower() in NO_STARTUP_REFRESH_VALUES
 
 
 def start_backend():
+    command = [
+        sys.executable,
+        "scripts/serve_dashboard.py",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(BACKEND_PORT),
+    ]
+    if startup_refresh_disabled():
+        command.append("--no-startup-refresh")
     return subprocess.Popen(
-        [
-            sys.executable,
-            "scripts/serve_dashboard.py",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(BACKEND_PORT),
-            "--no-startup-refresh",
-        ],
+        command,
         cwd=str(ROOT / "HedgeMate"),
         stdin=subprocess.DEVNULL,
     )

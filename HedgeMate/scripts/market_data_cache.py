@@ -85,7 +85,23 @@ def latest_raw_market_manifest(output_dir):
     ]
     if not paths:
         return None, {}
-    path = max(paths, key=lambda item: (item.stat().st_mtime, item.name))
+
+    def manifest_sort_key(item):
+        try:
+            payload = json.loads(item.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        data_version = str(payload.get("dataVersion") or "")
+        version_key = int(data_version) if len(data_version) == 8 and data_version.isdigit() else 0
+        target_date = str(payload.get("targetLatestMarketDate") or "")
+        max_date = str(payload.get("maxMarketDate") or payload.get("latestMarketDate") or "")
+        is_refresh = int(
+            payload.get("manifestVersion") == "raw_market_incremental_v1"
+            or payload.get("refreshMode") == "market_data_only"
+        )
+        return (version_key, target_date, max_date, is_refresh, item.stat().st_mtime, item.name)
+
+    path = max(paths, key=manifest_sort_key)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -260,10 +276,12 @@ def build_market_cache_summary(rows, universe_tickers, expected_date):
         for ticker in universe_tickers
         if latest_by_ticker.get(ticker, "") < expected_date
     ]
-    latest_market_date = min(covered_dates) if covered_dates else None
+    oldest_market_date = min(covered_dates) if covered_dates else None
+    latest_market_date = max(covered_dates) if covered_dates else None
     max_market_date = max(covered_dates) if covered_dates else None
     coverage_ratio = (len(universe_tickers) - len(stale_tickers)) / len(universe_tickers) if universe_tickers else 0.0
     return {
+        "oldestMarketDate": oldest_market_date,
         "latestMarketDate": latest_market_date,
         "maxMarketDate": max_market_date,
         "latestByTicker": latest_by_ticker,
@@ -374,6 +392,7 @@ def incremental_update_raw_market_data(
         if not fetched_rows:
             failed_tickers.append({"ticker": ticker, "reason": "no_new_rows_returned"})
             continue
+        accepted_rows = 0
         meta = universe_by_ticker[ticker]
         for raw in fetched_rows:
             row_date = str(raw.get("date") or "").strip()
@@ -396,7 +415,19 @@ def incremental_update_raw_market_data(
             key = (row["date"], ticker)
             if key not in merged:
                 rows_added += 1
+            accepted_rows += 1
             merged[key] = row
+        if accepted_rows == 0:
+            returned_dates = sorted({str(raw.get("date") or "").strip() for raw in fetched_rows if raw.get("date")})
+            failed_tickers.append(
+                {
+                    "ticker": ticker,
+                    "reason": "no_rows_within_target_range",
+                    "lastDate": last_date,
+                    "targetLatestMarketDate": target_latest_date,
+                    "returnedDates": returned_dates[-5:],
+                }
+            )
 
     if progress_callback:
         progress_callback(
@@ -420,6 +451,7 @@ def incremental_update_raw_market_data(
         "sourceSnapshot": str(source_snapshot),
         "outputSnapshot": str(target_snapshot),
         "targetLatestMarketDate": target_latest_date,
+        "oldestMarketDate": summary["oldestMarketDate"],
         "latestMarketDate": summary["latestMarketDate"],
         "maxMarketDate": summary["maxMarketDate"],
         "rowsAdded": rows_added,

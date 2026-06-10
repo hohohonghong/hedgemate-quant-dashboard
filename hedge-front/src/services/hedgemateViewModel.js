@@ -191,6 +191,27 @@ const safeKo = (value) => unsafeDisplayReplacements.reduce(
   String(value || '')
 );
 
+const friendlyFreshnessReason = (reason) => {
+  const text = safeKo(reason).trim();
+  const lower = text.toLowerCase();
+  if (!text) return '';
+  if (lower.startsWith('market data latest date')) {
+    return '실시간 시장데이터 확인이 필요합니다. 일부 종목의 최신 가격이 아직 반영되지 않았습니다.';
+  }
+  if (lower.startsWith('scenario vector stale') || lower.startsWith('active analysis bundle data_version')) {
+    return '';
+  }
+  if (lower.startsWith('scenario data_version')) {
+    return '시장국면 분석 데이터와 현재 분석 기준일이 맞지 않습니다. 포트폴리오 분석을 다시 실행해 주세요.';
+  }
+  if (lower.startsWith('portfolio input mismatch')) {
+    return '선택한 포트폴리오와 저장된 분석 결과가 다릅니다. 포트폴리오 분석을 다시 실행해 주세요.';
+  }
+  return text;
+};
+
+const uniqueMessages = (messages) => [...new Set(messages.map((message) => String(message || '').trim()).filter(Boolean))];
+
 const metricSetFromAction = (row, prefix = 'base') => {
   const result = {};
   Object.entries(METRIC_DEFINITIONS).forEach(([key, definition]) => {
@@ -537,7 +558,9 @@ export const toHedgeMateViewModel = (payload, selectedPortfolio, options = {}) =
   const integrityFingerprintHash = payload?.activeBundleIntegrity?.portfolioFingerprintHash || '';
   const activeFingerprintHash = activeBundleFingerprint?.hash || manifestFingerprint?.hash || integrityFingerprintHash || '';
   const rawFreshnessStatus = payload?.freshnessStatus || dataFreshness.freshnessStatus || '';
-  const marketDataFresh = dataFreshness.marketDataFresh !== false && dataFreshness.freshnessStatus !== 'STALE';
+  const marketDataFresh = dataFreshness.marketDataFresh !== undefined
+    ? dataFreshness.marketDataFresh !== false
+    : dataFreshness.freshnessStatus !== 'STALE';
   const freshnessStatus = rawFreshnessStatus || (marketDataFresh ? 'FRESH' : 'STALE');
   const displayFreshEnough = freshnessStatus !== 'STALE' && marketDataFresh;
   const rawDataNeedsRefresh = Boolean(dataFreshness.needsRefresh);
@@ -602,9 +625,16 @@ export const toHedgeMateViewModel = (payload, selectedPortfolio, options = {}) =
   const noSelectedActionSummary = reportDisplayReady && !canExecuteAction && selectedActionCount === 0 && evaluatedCandidateCount > 0
     ? `평가 후보 ${evaluatedCandidateCount}개를 계산했지만 backtest/formal gate를 통과한 최종 선택 액션은 없습니다. 후보 테이블에서 실패 사유를 확인할 수 있습니다.`
     : '';
-  const userFacingFreshnessReasons = asArray(dataFreshness.reasons)
-    .map(safeKo)
-    .filter((reason) => reason && !/^market data latest date/i.test(reason));
+  const rawFreshnessReasons = asArray(dataFreshness.reasons).map((reason) => String(reason || '').trim()).filter(Boolean);
+  const marketDataDelayed = dataFreshness.marketDataFresh === false
+    || asArray(dataFreshness.marketDataStaleTickers).length > 0
+    || asArray(dataFreshness.marketDataFailedTickers).length > 0
+    || rawFreshnessReasons.some((reason) => /^market data latest date/i.test(reason));
+  const analysisBundleStale = Boolean(dataFreshness.activeBundleOlderThanMarketCache)
+    || rawFreshnessReasons.some((reason) => /scenario vector stale|active analysis bundle data_version/i.test(reason));
+  const userFacingFreshnessReasons = rawFreshnessReasons
+    .map(friendlyFreshnessReason)
+    .filter(Boolean);
   const portfolioMatchMessage = !selectedPortfolio
     ? '선택된 프론트 포트폴리오가 없습니다.'
     : tickersMatch
@@ -714,15 +744,16 @@ export const toHedgeMateViewModel = (payload, selectedPortfolio, options = {}) =
       .sort((a, b) => b.vulnerabilityContribution - a.vulnerabilityContribution)
       .slice(0, 18),
     candidateRows,
-    warnings: [
+    warnings: uniqueMessages([
       ...(rawDataNeedsRefresh && displayFreshEnough ? ['시장데이터는 최신이지만 실행 검증 조건 일부가 차단되어 검토 후보로만 표시합니다.'] : []),
-      ...(dataFreshness.needsRefresh ? ['실시간 데이터 확인이 필요합니다.'] : []),
+      ...(marketDataDelayed ? ['실시간 시장데이터 확인이 필요합니다. 일부 종목의 최신 가격이 아직 반영되지 않았습니다.'] : []),
+      ...(analysisBundleStale ? ['최신 시장데이터는 반영됐지만, 현재 리포트는 이전 분석 결과입니다. 포트폴리오 분석을 다시 실행하면 새 기준으로 갱신됩니다.'] : []),
       ...userFacingFreshnessReasons,
-      ...asArray(payload?.staleReasons).map(safeKo),
+      ...asArray(payload?.staleReasons).map(friendlyFreshnessReason),
       ...asArray(payload?.actionArtifactWarnings).map(safeKo),
       ...(!cacheEvidenceOk ? ['선택 포트폴리오 기준으로 저장된 분석 캐시를 찾지 못했습니다.'] : []),
       ...(!portfolioMatches ? ['선택한 포트폴리오와 저장된 분석 결과가 다를 수 있습니다.'] : []),
       ...(actionDiversityWarning ? [actionDiversityWarning] : []),
-    ],
+    ]),
   };
 };

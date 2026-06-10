@@ -9,13 +9,14 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "scripts" / "serve_dashboard.py"
+APP_MODULE_PATH = ROOT.parent / "app.py"
 
 spec = importlib.util.spec_from_file_location("serve_dashboard", MODULE_PATH)
 serve_dashboard = importlib.util.module_from_spec(spec)
@@ -72,6 +73,12 @@ def write_valid_active_manifest(root, run_id, portfolio_input, data_version="202
 
 
 class DashboardServerTests(unittest.TestCase):
+    def _load_deployment_app(self):
+        spec = importlib.util.spec_from_file_location("deployment_app_under_test", APP_MODULE_PATH)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
     def _last_js_function_body(self, source, name):
         marker = f"function {name}("
         start = source.rfind(marker)
@@ -119,7 +126,28 @@ class DashboardServerTests(unittest.TestCase):
         serve_dashboard.SCENARIO_VECTOR_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "scenario_vectors"
         serve_dashboard.SCENARIO_NOWCAST_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "nowcast_vectors"
         serve_dashboard.SCENARIO_EVENT_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "events"
+        serve_dashboard.SCENARIO_NEWS_INTRADAY_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "news_intraday"
         serve_dashboard.SCENARIO_VALIDATION_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "validation"
+
+    def test_deployment_start_backend_keeps_startup_refresh_on_by_default(self):
+        app = self._load_deployment_app()
+
+        with mock.patch.object(app.subprocess, "Popen") as popen, \
+             mock.patch.dict(app.os.environ, {}, clear=True):
+            app.start_backend()
+
+        command = popen.call_args.args[0]
+        self.assertNotIn("--no-startup-refresh", command)
+
+    def test_deployment_start_backend_disables_startup_refresh_by_env(self):
+        app = self._load_deployment_app()
+
+        with mock.patch.object(app.subprocess, "Popen") as popen, \
+             mock.patch.dict(app.os.environ, {"HEDGEMATE_NO_STARTUP_REFRESH": "1"}, clear=True):
+            app.start_backend()
+
+        command = popen.call_args.args[0]
+        self.assertIn("--no-startup-refresh", command)
 
     def test_resolve_asset_query_accepts_label_and_ticker(self):
         self.assertEqual(serve_dashboard.resolve_asset_query("Tesla"), "TSLA")
@@ -313,9 +341,25 @@ class DashboardServerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             serve_dashboard.ROOT = root
+            serve_dashboard.OUTPUT_RAW_DIR = root / "outputs" / "raw"
             (root / "outputs" / "reports").mkdir(parents=True, exist_ok=True)
+            serve_dashboard.OUTPUT_RAW_DIR.mkdir(parents=True, exist_ok=True)
             artifact = root / "outputs" / "reports" / "x.csv"
             artifact.write_text("x\n", encoding="utf-8")
+            (serve_dashboard.OUTPUT_RAW_DIR / "raw_market_daily_20260519_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "manifestVersion": "raw_market_incremental_v1",
+                        "refreshMode": "market_data_only",
+                        "dataVersion": "20260519",
+                        "targetLatestMarketDate": "2026-05-18",
+                        "latestMarketDate": "2026-05-18",
+                        "maxMarketDate": "2026-05-18",
+                        "tickerCoverageRatio": 1.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
             (root / "outputs" / "latest_manifest.json").write_text(
                 '{"freshness_status":"FRESH","data_version":"20260519","artifacts":{"x":"outputs/reports/x.csv"},"active_bundle":{"data_version":"20260519","freshness_status":"FRESH"}}',
                 encoding="utf-8",
@@ -372,10 +416,26 @@ class DashboardServerTests(unittest.TestCase):
             root = Path(tmp)
             serve_dashboard.ROOT = root
             serve_dashboard.INPUT_DIR = root / "inputs"
+            serve_dashboard.OUTPUT_RAW_DIR = root / "outputs" / "raw"
             serve_dashboard.INPUT_DIR.mkdir(parents=True, exist_ok=True)
             (root / "outputs" / "reports").mkdir(parents=True, exist_ok=True)
+            serve_dashboard.OUTPUT_RAW_DIR.mkdir(parents=True, exist_ok=True)
             artifact = root / "outputs" / "reports" / "x.csv"
             artifact.write_text("x\n", encoding="utf-8")
+            (serve_dashboard.OUTPUT_RAW_DIR / "raw_market_daily_20260519_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "manifestVersion": "raw_market_incremental_v1",
+                        "refreshMode": "market_data_only",
+                        "dataVersion": "20260519",
+                        "targetLatestMarketDate": "2026-05-18",
+                        "latestMarketDate": "2026-05-18",
+                        "maxMarketDate": "2026-05-18",
+                        "tickerCoverageRatio": 1.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
             current_portfolio = serve_dashboard.INPUT_DIR / "portfolio_weights.csv"
             current_portfolio.write_text("ticker,weight_pct\nMSFT,50\nNVDA,50\n", encoding="utf-8")
             run_input = root / "outputs" / "run_inputs" / "run-1" / "portfolio_weights.csv"
@@ -566,7 +626,12 @@ class DashboardServerTests(unittest.TestCase):
             serve_dashboard.RUN_JOBS[job_id] = {"jobId": job_id, "status": "running"}
 
             with mock.patch.object(serve_dashboard, "universe_asset_rows", return_value=[{"ticker": "SPY"}]), \
-                 mock.patch.object(serve_dashboard, "incremental_update_raw_market_data", side_effect=fake_incremental):
+                 mock.patch.object(serve_dashboard, "incremental_update_raw_market_data", side_effect=fake_incremental), \
+                 mock.patch.object(
+                     serve_dashboard,
+                     "refresh_daily_market_state_outputs",
+                     return_value={"ok": True, "skipped": False, "finalRunId": "final-refresh-20260520"},
+                 ) as daily_refresh:
                 serve_dashboard._run_refresh_market_data_job(
                     job_id,
                     {"dataVersion": "20260520", "runStamp": "smoke"},
@@ -577,6 +642,218 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(serve_dashboard.RUN_JOBS[job_id]["status"], "completed")
         self.assertEqual(serve_dashboard.RUN_JOBS[job_id]["result"]["mode"], "market_data_only")
         self.assertEqual(serve_dashboard.RUN_JOBS[job_id]["result"]["rowsAdded"], 3)
+        self.assertEqual(serve_dashboard.RUN_JOBS[job_id]["result"]["dailyMarketState"]["finalRunId"], "final-refresh-20260520")
+        daily_refresh.assert_called_once()
+
+    def test_market_data_only_does_not_skip_when_daily_market_state_is_stale(self):
+        class ImmediateThread:
+            def __init__(self, target, args=(), kwargs=None, daemon=None):
+                self.target = target
+                self.args = args
+                self.kwargs = kwargs or {}
+
+            def start(self):
+                self.target(*self.args, **self.kwargs)
+
+        def fake_incremental(_universe_rows, output_dir, **_kwargs):
+            return {
+                "rawPath": Path(output_dir) / "raw_market_daily_20260520.csv",
+                "manifestPath": Path(output_dir) / "raw_market_daily_20260520_manifest.json",
+                "manifest": {
+                    "latestMarketDate": "2026-05-19",
+                    "maxMarketDate": "2026-05-19",
+                    "targetLatestMarketDate": "2026-05-19",
+                    "rowsAdded": 0,
+                    "failedTickers": [],
+                    "staleTickers": [],
+                    "tickerCoverageRatio": 1.0,
+                    "durationSeconds": 0.1,
+                },
+            }
+
+        with mock.patch.object(
+            serve_dashboard,
+            "load_data_freshness",
+            side_effect=[
+                {
+                    "status": "current",
+                    "skipHeavyRefresh": True,
+                    "marketDataFresh": True,
+                    "scenarioFinalFresh": False,
+                },
+                {
+                    "status": "current",
+                    "skipHeavyRefresh": True,
+                    "marketDataFresh": True,
+                    "scenarioFinalFresh": True,
+                },
+            ],
+        ), mock.patch.object(serve_dashboard, "universe_asset_rows", return_value=[{"ticker": "SPY"}]), mock.patch.object(
+            serve_dashboard,
+            "incremental_update_raw_market_data",
+            side_effect=fake_incremental,
+        ) as incremental, mock.patch.object(
+            serve_dashboard,
+            "refresh_daily_market_state_outputs",
+            return_value={"ok": True, "skipped": False, "finalRunId": "final-refresh-20260520"},
+        ) as daily_refresh:
+            job = serve_dashboard.launch_refresh_market_data_job(
+                {"mode": "market_data_only", "dataVersion": "20260520"},
+                runner=lambda *_args, **_kwargs: None,
+                thread_factory=ImmediateThread,
+            )
+
+        self.assertEqual(job["status"], "completed")
+        incremental.assert_called_once()
+        daily_refresh.assert_called_once()
+        self.assertEqual(job["result"]["dailyMarketState"]["finalRunId"], "final-refresh-20260520")
+
+    def test_market_data_only_does_not_skip_when_delayed_tickers_remain(self):
+        class ImmediateThread:
+            def __init__(self, target, args=(), kwargs=None, daemon=None):
+                self.target = target
+                self.args = args
+                self.kwargs = kwargs or {}
+
+            def start(self):
+                self.target(*self.args, **self.kwargs)
+
+        def fake_incremental(_universe_rows, output_dir, **_kwargs):
+            return {
+                "rawPath": Path(output_dir) / "raw_market_daily_20260520.csv",
+                "manifestPath": Path(output_dir) / "raw_market_daily_20260520_manifest.json",
+                "manifest": {
+                    "latestMarketDate": "2026-05-19",
+                    "maxMarketDate": "2026-05-19",
+                    "targetLatestMarketDate": "2026-05-19",
+                    "rowsAdded": 1,
+                    "failedTickers": [],
+                    "staleTickers": [],
+                    "tickerCoverageRatio": 1.0,
+                    "durationSeconds": 0.1,
+                },
+            }
+
+        with mock.patch.object(
+            serve_dashboard,
+            "load_data_freshness",
+            side_effect=[
+                {
+                    "status": "current",
+                    "skipHeavyRefresh": True,
+                    "marketDataFresh": True,
+                    "scenarioFinalFresh": True,
+                    "marketDataStaleTickers": ["BTC-USD"],
+                    "marketDataFailedTickers": [],
+                },
+                {
+                    "status": "current",
+                    "skipHeavyRefresh": True,
+                    "marketDataFresh": True,
+                    "scenarioFinalFresh": True,
+                    "marketDataStaleTickers": [],
+                    "marketDataFailedTickers": [],
+                },
+            ],
+        ), mock.patch.object(serve_dashboard, "universe_asset_rows", return_value=[{"ticker": "BTC-USD"}]), mock.patch.object(
+            serve_dashboard,
+            "incremental_update_raw_market_data",
+            side_effect=fake_incremental,
+        ) as incremental, mock.patch.object(
+            serve_dashboard,
+            "refresh_daily_market_state_outputs",
+            return_value={"ok": True, "skipped": False, "finalRunId": "final-refresh-20260520"},
+        ) as daily_refresh:
+            job = serve_dashboard.launch_refresh_market_data_job(
+                {"mode": "market_data_only", "dataVersion": "20260520"},
+                runner=lambda *_args, **_kwargs: None,
+                thread_factory=ImmediateThread,
+            )
+
+        self.assertEqual(job["status"], "completed")
+        incremental.assert_called_once()
+        daily_refresh.assert_called_once()
+        self.assertEqual(job["result"]["staleTickers"], [])
+
+    def test_market_data_only_skips_when_only_analysis_bundle_is_stale(self):
+        calls = {}
+
+        class NoopThread:
+            def __init__(self, target, args=(), kwargs=None, daemon=None):
+                self.target = target
+                self.args = args
+                self.kwargs = kwargs or {}
+
+            def start(self):
+                calls["started"] = True
+
+        def fake_runner(*_args, **_kwargs):
+            calls["runner"] = True
+
+        with mock.patch.object(
+            serve_dashboard,
+            "load_data_freshness",
+            return_value={
+                "status": "stale",
+                "skipHeavyRefresh": False,
+                "marketDataFresh": True,
+                "scenarioFinalFresh": True,
+                "marketDataStaleTickers": [],
+                "marketDataFailedTickers": [],
+                "activeBundleOlderThanMarketCache": True,
+            },
+        ), mock.patch.object(serve_dashboard, "latest_intraday_nowcast_status", return_value={}):
+            job = serve_dashboard.launch_refresh_market_data_job(
+                {"mode": "market_data_only"},
+                runner=fake_runner,
+                thread_factory=NoopThread,
+            )
+
+        self.assertEqual(job["status"], "skipped_latest")
+        self.assertNotIn("started", calls)
+        self.assertNotIn("runner", calls)
+
+    def test_market_data_only_skip_gate_requires_scenario_and_clean_tickers(self):
+        cases = [
+            ("daily scenario stale", {"scenarioFinalFresh": False}),
+            ("stale tickers remain", {"marketDataStaleTickers": ["BTC-USD"]}),
+            ("failed tickers remain", {"marketDataFailedTickers": ["ETH-USD"]}),
+        ]
+
+        for label, overrides in cases:
+            with self.subTest(label=label):
+                serve_dashboard.RUN_JOBS.clear()
+                calls = {}
+
+                class NoopThread:
+                    def __init__(self, target, args=(), kwargs=None, daemon=None):
+                        self.target = target
+                        self.args = args
+                        self.kwargs = kwargs or {}
+
+                    def start(self):
+                        calls["started"] = True
+
+                freshness = {
+                    "status": "current",
+                    "skipHeavyRefresh": True,
+                    "marketDataFresh": True,
+                    "scenarioFinalFresh": True,
+                    "marketDataStaleTickers": [],
+                    "marketDataFailedTickers": [],
+                }
+                freshness.update(overrides)
+
+                with mock.patch.object(serve_dashboard, "load_data_freshness", return_value=freshness), \
+                     mock.patch.object(serve_dashboard, "latest_intraday_nowcast_status", return_value={}):
+                    job = serve_dashboard.launch_refresh_market_data_job(
+                        {"mode": "market_data_only"},
+                        runner=lambda *_args, **_kwargs: None,
+                        thread_factory=NoopThread,
+                    )
+
+                self.assertEqual(job["status"], "queued")
+                self.assertTrue(calls.get("started"))
 
     def test_refresh_market_data_job_runs_full_rebuild_only_when_explicit(self):
         class Result:
@@ -824,13 +1101,135 @@ class DashboardServerTests(unittest.TestCase):
                     data_version="20260528",
                     reference_date=date(2026, 5, 28),
                 )
-                exact_manifest_exists = (raw_dir / "raw_market_daily_20260528_manifest.json").exists()
+                exact_manifest_exists = (raw_dir / "raw_market_daily_20260528_snapshot_status.json").exists()
 
         self.assertTrue(status["marketDataFresh"])
         self.assertEqual(status["latestMarketDate"], "2026-05-27")
         self.assertEqual(status["marketDataVersion"], "20260528")
-        self.assertTrue(status["marketDataManifestPath"].endswith("raw_market_daily_20260528_manifest.json"))
+        self.assertTrue(status["marketDataManifestPath"].endswith("raw_market_daily_20260528_snapshot_status.json"))
         self.assertTrue(exact_manifest_exists)
+
+    def test_latest_market_cache_status_uses_newer_cache_manifest_for_display_date(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_dir = Path(tmp) / "raw"
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            old_manifest = raw_dir / "raw_market_daily_20260605_manifest.json"
+            old_manifest.write_text(
+                json.dumps(
+                    {
+                        "manifestVersion": "raw_market_snapshot_v1",
+                        "dataVersion": "20260605",
+                        "targetLatestMarketDate": "2026-06-08",
+                        "latestMarketDate": "2026-06-04",
+                        "maxMarketDate": "2026-06-04",
+                        "tickerCoverageRatio": 0.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            new_manifest = raw_dir / "raw_market_daily_20260609_manifest.json"
+            new_manifest.write_text(
+                json.dumps(
+                    {
+                        "manifestVersion": "raw_market_incremental_v1",
+                        "refreshMode": "market_data_only",
+                        "dataVersion": "20260609",
+                        "targetLatestMarketDate": "2026-06-08",
+                        "latestMarketDate": "2026-06-05",
+                        "maxMarketDate": "2026-06-08",
+                        "oldestMarketDate": "2026-06-05",
+                        "generatedAtUtc": "2026-06-09T05:25:50+00:00",
+                        "failedTickers": [],
+                        "staleTickers": ["BTC-USD"],
+                        "tickerCoverageRatio": 0.93,
+                        "totalTickers": 150,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            # Give the older dataVersion the newer mtime; selection should still
+            # prefer the 20260609 manifest by dataVersion/target date.
+            old_manifest.touch()
+            with mock.patch.object(serve_dashboard, "OUTPUT_RAW_DIR", raw_dir):
+                status = serve_dashboard.latest_market_cache_status(
+                    data_version="20260605",
+                    reference_date=date(2026, 6, 9),
+                )
+
+        self.assertTrue(status["marketDataFresh"])
+        self.assertEqual(status["latestMarketDate"], "2026-06-08")
+        self.assertEqual(status["oldestMarketDate"], "2026-06-05")
+        self.assertEqual(status["marketDataVersion"], "20260609")
+        self.assertTrue(status["marketDataManifestPath"].endswith("raw_market_daily_20260609_manifest.json"))
+
+    def test_load_data_freshness_flags_active_bundle_older_than_market_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            serve_dashboard.ROOT = root
+            serve_dashboard.OUTPUT_RAW_DIR = root / "outputs" / "raw"
+            serve_dashboard.OUTPUT_RAW_DIR.mkdir(parents=True, exist_ok=True)
+            (root / "outputs").mkdir(parents=True, exist_ok=True)
+            (root / "outputs" / "latest_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "freshness_status": "FRESH",
+                        "data_version": "20260605",
+                        "active_bundle": {
+                            "data_version": "20260605",
+                            "freshness_status": "FRESH",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (serve_dashboard.OUTPUT_RAW_DIR / "raw_market_daily_20260609_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "manifestVersion": "raw_market_incremental_v1",
+                        "refreshMode": "market_data_only",
+                        "dataVersion": "20260609",
+                        "targetLatestMarketDate": "2026-06-08",
+                        "latestMarketDate": "2026-06-05",
+                        "maxMarketDate": "2026-06-08",
+                        "oldestMarketDate": "2026-06-05",
+                        "tickerCoverageRatio": 0.93,
+                        "generatedAtUtc": "2026-06-09T05:25:50+00:00",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            freshness = serve_dashboard.load_data_freshness(reference_date=date(2026, 6, 9))
+
+        self.assertEqual(freshness["latestMarketDate"], "2026-06-08")
+        self.assertEqual(freshness["marketDataVersion"], "20260609")
+        self.assertTrue(freshness["marketDataFresh"])
+        self.assertTrue(freshness["activeBundleOlderThanMarketCache"])
+        self.assertEqual(freshness["status"], "stale")
+        self.assertIn("older than market data cache", " ".join(freshness["reasons"]))
+
+    def test_product_data_freshness_response_hides_raw_stale_reasons_when_market_data_is_fresh(self):
+        freshness = {
+            "needsRefresh": True,
+            "freshnessStatus": "STALE",
+            "marketDataFresh": True,
+            "activeBundleOlderThanMarketCache": True,
+            "reasons": [
+                "scenario vector stale: 4 business days old",
+                "active analysis bundle data_version 20260605 is older than market data cache 20260610",
+            ],
+        }
+
+        response = serve_dashboard.product_data_freshness_response(freshness)
+
+        self.assertFalse(response["needsRefresh"])
+        self.assertFalse(response["marketDataNeedsRefresh"])
+        self.assertTrue(response["needsAnalysisRefresh"])
+        self.assertEqual(len(response["reasons"]), 1)
+        self.assertIn("포트폴리오 분석을 다시 실행", response["reasons"][0])
+        self.assertNotIn("rawReasons", response)
+        self.assertNotIn("scenario vector stale", " ".join(response["reasons"]))
+        self.assertNotIn("active analysis bundle", " ".join(response["reasons"]))
 
     def test_latest_market_cache_status_marks_today_market_data_attempt(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2190,7 +2589,7 @@ class DashboardServerTests(unittest.TestCase):
             }
             with mock.patch.object(serve_dashboard, "read_product_manifest", return_value=manifest), mock.patch.object(
                 serve_dashboard, "load_dashboard_data", return_value=hedge
-            ), mock.patch.object(serve_dashboard, "load_scenario_dashboard_data", return_value={"runId": "scenario-prod"}), mock.patch.object(
+            ), mock.patch.object(serve_dashboard, "load_scenario_dashboard_data", return_value={"runId": "scenario-prod"}) as scenario_loader, mock.patch.object(
                 serve_dashboard, "load_data_freshness", return_value={"status": "current"}
             ), mock.patch.object(
                 serve_dashboard, "load_backtest_payload", return_value=backtest
@@ -2204,6 +2603,7 @@ class DashboardServerTests(unittest.TestCase):
             self.assertEqual(data["recommendationDecision"]["formalRecommendationCount"], 1)
             self.assertEqual(data["actionPlanDecision"]["reviewActionCount"], 1)
             self.assertFalse(data["actionPlanDecision"]["canExecuteAction"])
+            scenario_loader.assert_called_once_with(include_intraday_news=False)
 
     def test_parse_portfolio_rows_rejects_duplicate_assets(self):
         with self.assertRaises(ValueError):
@@ -2409,6 +2809,95 @@ class DashboardServerTests(unittest.TestCase):
             self.assertEqual(scenario_resolved, scenario_allowed.resolve())
             self.assertIsNone(serve_dashboard.safe_rel_artifact("secret.txt"))
 
+    def test_primary_market_state_prefers_fresh_nowcast_without_replacing_daily_final(self):
+        daily = [
+            {
+                "scenario_code": "usd_strength_krw_weakness",
+                "scenario_name_ko": "broken ?쒖옣",
+                "final_score": 79.259566,
+                "final_confidence": 82.0,
+                "final_display_state": "ACTIVE",
+                "lens": "fx_krw",
+            }
+        ]
+        nowcast = [
+            {
+                "nowcast_code": "krw_weakness_intraday",
+                "nowcast_name_ko": "broken ?μ쨷",
+                "score": 35.0,
+                "status": "OFF",
+                "confidence": 96.5,
+                "as_of_kst": "2026-06-09T14:26:30+09:00",
+            },
+            {
+                "nowcast_code": "kr_risk_on_intraday",
+                "nowcast_name_ko": "broken ?쒓뎅",
+                "score": 88.5,
+                "status": "RISK_ON",
+                "confidence": 97.25,
+                "as_of_kst": "2026-06-09T14:26:30+09:00",
+                "lens": "korea_market",
+            },
+        ]
+
+        primary = serve_dashboard.build_primary_market_state(
+            daily,
+            nowcast,
+            {"fresh": True, "latestTimestampKst": "2026-06-09T14:26:30+09:00"},
+            "2026-06-04",
+            "2026-06-09",
+        )
+
+        self.assertEqual(primary["source"], "intraday_nowcast")
+        self.assertEqual(primary["code"], "kr_risk_on_intraday")
+        self.assertEqual(primary["nameKo"], "한국장 장중 위험선호")
+        self.assertAlmostEqual(primary["score"], 88.5)
+        self.assertEqual(primary["dataAsOfDate"], "2026-06-09")
+        self.assertEqual(primary["officialDailyDataAsOfDate"], "2026-06-04")
+        self.assertIn("2026-06-04", primary["officialDailyBasisNote"])
+        self.assertEqual(daily[0]["scenario_code"], "usd_strength_krw_weakness")
+
+    def test_primary_market_state_falls_back_to_daily_final_when_nowcast_is_stale(self):
+        daily = [
+            {
+                "scenario_code": "usd_strength_krw_weakness",
+                "scenario_name_ko": "broken ?щ윭",
+                "final_score": 79.259566,
+                "final_confidence": 82.0,
+                "final_display_state": "ACTIVE",
+                "lens": "fx_krw",
+            }
+        ]
+        nowcast = [
+            {
+                "nowcast_code": "kr_risk_on_intraday",
+                "score": 88.5,
+                "status": "RISK_ON",
+                "confidence": 97.25,
+            }
+        ]
+
+        primary = serve_dashboard.build_primary_market_state(
+            daily,
+            nowcast,
+            {"fresh": False, "latestTimestampKst": "2026-06-09T09:00:00+09:00"},
+            "2026-06-04",
+            "2026-06-09",
+        )
+        freshness = serve_dashboard.build_market_state_freshness(
+            "2026-06-09",
+            "2026-06-04",
+            {"fresh": False, "latestTimestampKst": "2026-06-09T09:00:00+09:00"},
+            primary,
+        )
+
+        self.assertEqual(primary["source"], "daily_final")
+        self.assertEqual(primary["code"], "usd_strength_krw_weakness")
+        self.assertEqual(primary["nameKo"], "달러강세/원화약세")
+        self.assertAlmostEqual(primary["score"], 79.259566)
+        self.assertFalse(freshness["intradayFresh"])
+        self.assertTrue(freshness["dailyFinalStale"])
+
     def test_load_scenario_dashboard_data_parses_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -2473,10 +2962,26 @@ class DashboardServerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            data = serve_dashboard.load_scenario_dashboard_data(run_id)
+            with mock.patch.object(
+                serve_dashboard,
+                "latest_intraday_nowcast_status",
+                return_value={
+                    "fresh": True,
+                    "latestTimestampKst": "2026-05-06T12:00:00+09:00",
+                    "requiredAnchorKst": "2026-05-06T12:00:00+09:00",
+                    "bucketHours": 3,
+                },
+            ):
+                data = serve_dashboard.load_scenario_dashboard_data(run_id)
             self.assertEqual(data["runId"], run_id)
             self.assertEqual(data["asOfDate"], serve_dashboard.display_reference_date())
             self.assertEqual(data["dataAsOfDate"], "2026-05-06")
+            self.assertEqual(data["primaryMarketState"]["source"], "intraday_nowcast")
+            self.assertEqual(data["primaryMarketState"]["score"], 91.0)
+            self.assertEqual(data["primaryMarketState"]["dataAsOfDate"], "2026-05-06")
+            self.assertEqual(data["primaryMarketState"]["officialDailyDataAsOfDate"], "2026-05-06")
+            self.assertEqual(data["marketStateFreshness"]["primaryDataAsOfDate"], "2026-05-06")
+            self.assertTrue(data["marketStateFreshness"]["intradayFresh"])
             self.assertEqual(data["topActiveScenarios"][0]["scenario_code"], "soft_landing")
             self.assertEqual(data["topMarketRows"][0]["scenario_code"], "soft_landing")
             self.assertEqual(data["stateCounts"], [{"state": "ACTIVE", "count": 1}, {"state": "WATCH", "count": 1}])
@@ -2575,6 +3080,106 @@ class DashboardServerTests(unittest.TestCase):
 
             self.assertEqual(data["runId"], "v2-phase6-prod")
             self.assertEqual(data["scenarioVectorLeaders"][0]["score"], 88.0)
+
+    def test_scenario_dashboard_prefers_scenario_manifest_over_stale_product_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            root = workspace / "HedgeMate"
+            scenario_root = workspace / "scenario_research"
+            serve_dashboard.ROOT = root
+            serve_dashboard.SCENARIO_RESEARCH_ROOT = scenario_root
+            serve_dashboard.SCENARIO_OUTPUT_DIR = scenario_root / "outputs"
+            serve_dashboard.SCENARIO_FINAL_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "final"
+            serve_dashboard.SCENARIO_PROCESSED_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "processed"
+            serve_dashboard.SCENARIO_REPORT_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "reports"
+            serve_dashboard.SCENARIO_VECTOR_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "scenario_vectors"
+            serve_dashboard.SCENARIO_NOWCAST_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "nowcast_vectors"
+            serve_dashboard.SCENARIO_EVENT_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "events"
+            serve_dashboard.SCENARIO_VALIDATION_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "validation"
+            serve_dashboard.SCENARIO_NEWS_INTRADAY_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "news_intraday"
+
+            for run_id, date, score in [
+                ("final-refresh-20260609", "2026-06-08", 91.0),
+                ("final-refresh-20260605", "2026-06-04", 79.0),
+            ]:
+                write_csv(
+                    serve_dashboard.SCENARIO_FINAL_DIR / f"final_market_state_daily_{run_id}.csv",
+                    ["date", "scenario_code", "scenario_name", "scenario_name_ko", "lens", "final_score", "final_confidence", "final_display_state", "event_count", "overlay_applied"],
+                    [{"date": date, "scenario_code": "kr_risk_on_intraday", "scenario_name": "KR Risk On", "scenario_name_ko": "KR Risk On", "lens": "korea_market", "final_score": score, "final_confidence": 80.0, "final_display_state": "ACTIVE", "event_count": 0, "overlay_applied": "N"}],
+                )
+                write_csv(
+                    serve_dashboard.SCENARIO_FINAL_DIR / f"scenario_confidence_{run_id}.csv",
+                    ["date", "scenario_code", "final_confidence"],
+                    [{"date": date, "scenario_code": "kr_risk_on_intraday", "final_confidence": 80.0}],
+                )
+                (serve_dashboard.SCENARIO_FINAL_DIR / f"top_active_scenarios_{run_id}.json").write_text(
+                    json.dumps(
+                        {
+                            "date": date,
+                            "top_active_scenarios": [
+                                {
+                                    "scenario_code": "kr_risk_on_intraday",
+                                    "final_score": score,
+                                    "final_confidence": 80.0,
+                                    "final_display_state": "ACTIVE",
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                (serve_dashboard.SCENARIO_REPORT_DIR / f"final_market_state_metadata_{run_id}.json").parent.mkdir(parents=True, exist_ok=True)
+                (serve_dashboard.SCENARIO_REPORT_DIR / f"final_market_state_metadata_{run_id}.json").write_text(
+                    json.dumps({"date": date, "pipeline_phase": "final"}),
+                    encoding="utf-8",
+                )
+                (serve_dashboard.SCENARIO_VECTOR_DIR / f"current_scenario_vector_{run_id}.json").parent.mkdir(parents=True, exist_ok=True)
+                (serve_dashboard.SCENARIO_VECTOR_DIR / f"current_scenario_vector_{run_id}.json").write_text(
+                    json.dumps(
+                        [
+                            {
+                                "scenario_code": "kr_risk_on_intraday",
+                                "score": score,
+                                "display_state": "ACTIVE",
+                                "confidence": 80.0,
+                                "lens": "korea_market",
+                            }
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+
+            (serve_dashboard.SCENARIO_OUTPUT_DIR / "latest_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "active_final_run": "final-refresh-20260609",
+                        "active_final_market_state": "final_market_state_daily_final-refresh-20260609.csv",
+                        "active_final_scenario_vector_path": "scenario_vectors/current_scenario_vector_final-refresh-20260609.json",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "outputs").mkdir(parents=True, exist_ok=True)
+            (root / "outputs" / "latest_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "active_final_run": "final-refresh-20260605",
+                        "active_bundle": {"final_market_state_run": "final-refresh-20260605"},
+                        "artifacts": {
+                            "finalScenarioVector": "scenario_research/outputs/scenario_vectors/current_scenario_vector_final-refresh-20260605.json"
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            payload = serve_dashboard.load_scenario_dashboard_data()
+
+            self.assertEqual(payload["runId"], "final-refresh-20260609")
+            self.assertEqual(payload["dataAsOfDate"], "2026-06-08")
+            self.assertEqual(payload["topActiveScenarios"][0]["final_score"], 91.0)
+            self.assertEqual(payload["scenarioVectorLeaders"][0]["score"], 91.0)
+            self.assertEqual(serve_dashboard.find_scenario_run_ids()[0], "final-refresh-20260609")
 
     def test_humanize_scenario_replaces_tickers(self):
         self.assertEqual(
@@ -3195,6 +3800,132 @@ class DashboardServerTests(unittest.TestCase):
         self.assertIn("single_asset_hedge_1to1_hedge-user_backtest_gated.csv", " ".join(commands[1]))
         self.assertIn("single_asset_hedge_1to1_hedge-user_backtest_gated.csv", " ".join(commands[2]))
 
+    def test_product_update_prefers_latest_scenario_manifest_over_stale_product_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "HedgeMate"
+            workspace = root.parent
+            scenario = workspace / "scenario_research"
+            serve_dashboard.ROOT = root
+            serve_dashboard.OUTPUT_PROCESSED_DIR = root / "outputs" / "processed"
+            serve_dashboard.OUTPUT_REPORT_DIR = root / "outputs" / "reports"
+            serve_dashboard.OUTPUT_VALIDATION_DIR = root / "outputs" / "validation"
+            serve_dashboard.SCENARIO_RESEARCH_ROOT = scenario
+            serve_dashboard.SCENARIO_OUTPUT_DIR = scenario / "outputs"
+            serve_dashboard.SCENARIO_FINAL_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "final"
+            serve_dashboard.SCENARIO_REPORT_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "reports"
+            serve_dashboard.SCENARIO_VECTOR_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "scenario_vectors"
+            for path in [
+                serve_dashboard.SCENARIO_VECTOR_DIR / "current_scenario_vector_scenario-refresh-20260610.csv",
+                serve_dashboard.SCENARIO_VECTOR_DIR / "current_scenario_vector_final-refresh-20260610.csv",
+                serve_dashboard.SCENARIO_FINAL_DIR / "final_market_state_daily_final-refresh-20260610.csv",
+                serve_dashboard.SCENARIO_FINAL_DIR / "scenario_confidence_final-refresh-20260610.csv",
+                serve_dashboard.SCENARIO_FINAL_DIR / "top_active_scenarios_final-refresh-20260610.json",
+                serve_dashboard.SCENARIO_REPORT_DIR / "final_market_state_metadata_final-refresh-20260610.json",
+            ]:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("{}" if path.suffix == ".json" else "x\n", encoding="utf-8")
+            (serve_dashboard.SCENARIO_OUTPUT_DIR / "latest_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "active_scenario_run": "scenario-refresh-20260610",
+                        "active_final_run": "final-refresh-20260610",
+                        "scenario_vector_as_of_date": "2026-06-09",
+                        "active_scenario_vector_path": "scenario_vectors/current_scenario_vector_scenario-refresh-20260610.csv",
+                        "active_final_scenario_vector_path": "scenario_vectors/current_scenario_vector_final-refresh-20260610.csv",
+                        "active_final_market_state_path": "final/final_market_state_daily_final-refresh-20260610.csv",
+                        "active_scenario_confidence_path": "final/scenario_confidence_final-refresh-20260610.csv",
+                        "active_top_active_scenarios_path": "final/top_active_scenarios_final-refresh-20260610.json",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "outputs").mkdir(parents=True, exist_ok=True)
+            (root / "outputs" / "latest_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "data_version": "20260605",
+                        "active_bundle": {
+                            "scenario_run": "scenario-refresh-20260605",
+                            "final_market_state_run": "final-refresh-20260605",
+                            "data_version": "20260605",
+                            "scenario_vector_as_of_date": "2026-06-04",
+                        },
+                        "artifacts": {
+                            "finalScenarioVector": "scenario_research/outputs/scenario_vectors/current_scenario_vector_final-refresh-20260605.csv"
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            commands, _ = serve_dashboard.build_product_update_commands("hedge-user")
+
+        update_cmd = commands[2]
+        self.assertEqual(update_cmd[update_cmd.index("--scenario-run-id") + 1], "scenario-refresh-20260610")
+        self.assertEqual(update_cmd[update_cmd.index("--final-run-id") + 1], "final-refresh-20260610")
+        self.assertEqual(update_cmd[update_cmd.index("--data-version") + 1], "20260610")
+        self.assertEqual(update_cmd[update_cmd.index("--scenario-vector-as-of-date") + 1], "2026-06-09")
+        self.assertIn("current_scenario_vector_final-refresh-20260610.csv", update_cmd[update_cmd.index("--final-scenario-vector") + 1])
+        self.assertNotIn("20260605", " ".join(update_cmd))
+
+    def test_prepare_run_request_uses_latest_scenario_vector_for_cache_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "HedgeMate"
+            workspace = root.parent
+            scenario = workspace / "scenario_research"
+            serve_dashboard.ROOT = root
+            serve_dashboard.INPUT_DIR = root / "inputs"
+            serve_dashboard.RUN_INPUT_DIR = root / "outputs" / "run_inputs"
+            serve_dashboard.SCENARIO_RESEARCH_ROOT = scenario
+            serve_dashboard.SCENARIO_OUTPUT_DIR = scenario / "outputs"
+            serve_dashboard.SCENARIO_VECTOR_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "scenario_vectors"
+            latest_vector = serve_dashboard.SCENARIO_VECTOR_DIR / "current_scenario_vector_final-refresh-20260610.csv"
+            latest_vector.parent.mkdir(parents=True, exist_ok=True)
+            latest_vector.write_text("scenario_code,score\nrisk_on,1\n", encoding="utf-8")
+            (serve_dashboard.SCENARIO_OUTPUT_DIR / "latest_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "active_scenario_run": "scenario-refresh-20260610",
+                        "active_final_run": "final-refresh-20260610",
+                        "active_final_scenario_vector_path": "scenario_vectors/current_scenario_vector_final-refresh-20260610.csv",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            stale_vector = scenario / "outputs" / "scenario_vectors" / "current_scenario_vector_final-refresh-20260605.csv"
+            stale_vector.parent.mkdir(parents=True, exist_ok=True)
+            stale_vector.write_text("scenario_code,score\nold,1\n", encoding="utf-8")
+            (root / "outputs").mkdir(parents=True, exist_ok=True)
+            (root / "outputs" / "latest_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "data_version": "20260605",
+                        "active_bundle": {"data_version": "20260605"},
+                        "artifacts": {"finalScenarioVector": str(stale_vector)},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            prepared = serve_dashboard.prepare_run_request(
+                {
+                    "mode": "portfolio",
+                    "portfolioRows": [
+                        {"asset": "Apple", "amountKrw": 5000000},
+                        {"asset": "Microsoft", "amountKrw": 5000000},
+                    ],
+                    "hedgeBudgetKrw": 1000000,
+                    "runId": "unit-run",
+                },
+                job_id="job-1",
+            )
+
+        self.assertEqual(prepared["dataVersion"], "20260610")
+        self.assertEqual(prepared["mode"], "portfolio")
+        self.assertEqual(prepared["analysisCacheKeyPayload"]["dataVersion"], "20260610")
+        self.assertIn(str(latest_vector), prepared["cmd"])
+        self.assertNotIn(str(stale_vector), prepared["cmd"])
+
     def test_launch_run_job_rejects_invalid_request_before_creating_job(self):
         with self.assertRaises(ValueError):
             serve_dashboard.launch_run_job(
@@ -3239,9 +3970,324 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(status, "REVIEW_ONLY")
         self.assertEqual(reasons, ["formal gate 미통과"])
 
+    def test_intraday_news_job_does_not_count_as_analysis_running(self):
+        serve_dashboard.RUN_JOBS["news-running"] = {
+            "jobId": "news-running",
+            "jobType": serve_dashboard.INTRADAY_NEWS_JOB_TYPE,
+            "mode": serve_dashboard.INTRADAY_NEWS_JOB_TYPE,
+            "status": "running",
+            "stage": "intraday news overlay",
+            "startedAt": datetime.now().isoformat(timespec="seconds"),
+        }
+
+        self.assertFalse(serve_dashboard.has_running_analysis_job())
+
+    def test_strip_intraday_news_from_product_manifest_response(self):
+        sanitized = serve_dashboard.strip_intraday_news_from_product_manifest(
+            {
+                "latestIntradayNewsOverlay": "scenario_research/outputs/news_intraday/news_top5.json",
+                "intradayNewsOverlayStatus": {"status": "success"},
+                "intradayNewsTop5": [{"title": "news"}],
+                "eventOverlayMetadata": "scenario_research/outputs/reports/event_overlay_metadata_keep.json",
+                "artifacts": {
+                    "eventOverlayMetadata": "scenario_research/outputs/reports/event_overlay_metadata_keep.json",
+                    "latestIntradayNewsOverlay": "scenario_research/outputs/news_intraday/news_top5.json",
+                    "intradayNewsOverlayMetadata": "scenario_research/outputs/news_intraday/news_overlay_metadata.json",
+                },
+            }
+        )
+
+        self.assertNotIn("latestIntradayNewsOverlay", sanitized)
+        self.assertNotIn("intradayNewsOverlayStatus", sanitized)
+        self.assertNotIn("intradayNewsTop5", sanitized)
+        self.assertEqual(sanitized["eventOverlayMetadata"], "scenario_research/outputs/reports/event_overlay_metadata_keep.json")
+        self.assertEqual(
+            sanitized["artifacts"],
+            {"eventOverlayMetadata": "scenario_research/outputs/reports/event_overlay_metadata_keep.json"},
+        )
+
     def test_build_run_id_returns_extended_unique_format(self):
         run_id = serve_dashboard.build_run_id()
         self.assertRegex(run_id, r"^\d{8}T\d{12}-[0-9a-f]{8}$")
+
+    def test_intraday_news_job_does_not_block_market_refresh_jobs(self):
+        class Result:
+            returncode = 0
+            stdout = "DONE\n"
+            stderr = ""
+
+        class ImmediateThread:
+            def __init__(self, target, args=(), daemon=None):
+                self.target = target
+                self.args = args
+                self.daemon = daemon
+
+            def start(self):
+                self.target(*self.args)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "HedgeMate"
+            scenario = root.parent / "scenario_research"
+            serve_dashboard.ROOT = root
+            serve_dashboard.SCENARIO_RESEARCH_ROOT = scenario
+            serve_dashboard.SCENARIO_OUTPUT_DIR = scenario / "outputs"
+            serve_dashboard.SCENARIO_NEWS_INTRADAY_DIR = scenario / "outputs" / "news_intraday"
+
+            def fake_runner(cmd, cwd, capture_output, text, check, timeout=None):
+                run_id = cmd[cmd.index("--run-id") + 1]
+                out_dir = serve_dashboard.SCENARIO_NEWS_INTRADAY_DIR
+                out_dir.mkdir(parents=True, exist_ok=True)
+                top5_path = out_dir / f"news_top5_{run_id}.json"
+                metadata_path = out_dir / f"news_overlay_metadata_{run_id}.json"
+                top5_path.write_text(json.dumps({"items": [{"title": "fallback", "source": "unit"}]}), encoding="utf-8")
+                metadata_path.write_text(
+                    json.dumps(
+                        {
+                            "status": "success",
+                            "run_id": run_id,
+                            "job_type": "intraday_news_overlay",
+                            "generated_at": datetime.now(timezone.utc).isoformat(),
+                            "refresh_window_kst": serve_dashboard.current_intraday_news_anchor_kst().isoformat(),
+                            "provider": "fallback_fixture",
+                            "fallback_used": True,
+                            "gemini_model": "gemini-2.5-flash-lite",
+                            "gemini_key_source": "missing",
+                            "paths": {"top5": str(top5_path), "metadata": str(metadata_path)},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return Result()
+
+            serve_dashboard.RUN_JOBS["market-running"] = {
+                "jobId": "market-running",
+                "jobType": serve_dashboard.MARKET_REFRESH_JOB_TYPE,
+                "mode": "market_data_only",
+                "status": "running",
+                "stage": "refreshing",
+                "startedAt": datetime.now().isoformat(timespec="seconds"),
+            }
+
+            job = serve_dashboard.launch_intraday_news_overlay_job(
+                {"dataVersion": "20260608", "runStamp": "20260608T090000", "noNetwork": True},
+                runner=fake_runner,
+                thread_factory=ImmediateThread,
+            )
+
+            self.assertEqual(job["status"], "completed")
+            self.assertEqual(job["jobType"], serve_dashboard.INTRADAY_NEWS_JOB_TYPE)
+            self.assertEqual(serve_dashboard.RUN_JOBS["market-running"]["status"], "running")
+
+    def test_scenario_dashboard_attaches_intraday_news_without_replacing_event_overlay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "HedgeMate"
+            scenario = root.parent / "scenario_research"
+            serve_dashboard.ROOT = root
+            serve_dashboard.SCENARIO_RESEARCH_ROOT = scenario
+            serve_dashboard.SCENARIO_OUTPUT_DIR = scenario / "outputs"
+            serve_dashboard.SCENARIO_FINAL_DIR = scenario / "outputs" / "final"
+            serve_dashboard.SCENARIO_REPORT_DIR = scenario / "outputs" / "reports"
+            serve_dashboard.SCENARIO_VECTOR_DIR = scenario / "outputs" / "scenario_vectors"
+            serve_dashboard.SCENARIO_NOWCAST_DIR = scenario / "outputs" / "nowcast_vectors"
+            serve_dashboard.SCENARIO_EVENT_DIR = scenario / "outputs" / "events"
+            serve_dashboard.SCENARIO_NEWS_INTRADAY_DIR = scenario / "outputs" / "news_intraday"
+
+            run_id = "final-news-test"
+            write_csv(
+                serve_dashboard.SCENARIO_FINAL_DIR / f"final_market_state_daily_{run_id}.csv",
+                ["date", "scenario_code", "scenario_name_ko", "final_score", "final_confidence", "final_display_state", "lens", "market_interpretation_ko"],
+                [
+                    {
+                        "date": "2026-06-08",
+                        "scenario_code": "usd_strength_krw_weakness",
+                        "scenario_name_ko": "달러강세/원화약세",
+                        "final_score": "78",
+                        "final_confidence": "82",
+                        "final_display_state": "ACTIVE",
+                        "lens": "fx",
+                        "market_interpretation_ko": "FX pressure",
+                    }
+                ],
+            )
+            (serve_dashboard.SCENARIO_FINAL_DIR / f"scenario_confidence_{run_id}.csv").write_text("x\n", encoding="utf-8")
+            (serve_dashboard.SCENARIO_FINAL_DIR / f"top_active_scenarios_{run_id}.json").write_text(
+                json.dumps({"date": "2026-06-08", "top_active_scenarios": [{"scenario_code": "usd_strength_krw_weakness", "final_score": 78, "final_confidence": 82, "final_display_state": "ACTIVE"}]}),
+                encoding="utf-8",
+            )
+            (serve_dashboard.SCENARIO_REPORT_DIR / f"final_market_state_metadata_{run_id}.json").parent.mkdir(parents=True, exist_ok=True)
+            (serve_dashboard.SCENARIO_REPORT_DIR / f"final_market_state_metadata_{run_id}.json").write_text(
+                json.dumps({"date": "2026-06-08", "pipeline_phase": "final"}),
+                encoding="utf-8",
+            )
+            (serve_dashboard.SCENARIO_VECTOR_DIR / "current_scenario_vector_vector.json").parent.mkdir(parents=True, exist_ok=True)
+            (serve_dashboard.SCENARIO_VECTOR_DIR / "current_scenario_vector_vector.json").write_text("[]", encoding="utf-8")
+            event_metadata = serve_dashboard.SCENARIO_REPORT_DIR / "event_overlay_metadata_keep.json"
+            event_metadata.write_text(json.dumps({"article_count": 7}), encoding="utf-8")
+            top5_path = serve_dashboard.SCENARIO_NEWS_INTRADAY_DIR / "news_top5_unit.json"
+            metadata_path = serve_dashboard.SCENARIO_NEWS_INTRADAY_DIR / "news_overlay_metadata_unit.json"
+            top5_path.parent.mkdir(parents=True, exist_ok=True)
+            top5_path.write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {
+                                "title": "KRW risk",
+                                "source": "unit",
+                                "date": "2026-06-08T10:00:00+09:00",
+                                "severity": 90,
+                                "confidence": 80,
+                                "scenarioLinks": ["usd_strength_krw_weakness"],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            metadata_path.write_text(
+                json.dumps(
+                    {
+                        "status": "success",
+                        "run_id": "unit",
+                        "job_type": "intraday_news_overlay",
+                        "generated_at": datetime.now(timezone.utc).isoformat(),
+                        "refresh_window_kst": serve_dashboard.current_intraday_news_anchor_kst().isoformat(),
+                        "provider": "gemini",
+                        "fallback_used": False,
+                        "gemini_model": "gemini-2.5-flash-lite",
+                        "gemini_key_source": "missing",
+                        "paths": {"top5": str(top5_path), "metadata": str(metadata_path)},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "outputs").mkdir(parents=True, exist_ok=True)
+            (root / "outputs" / "latest_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "active_final_run": run_id,
+                        "active_bundle": {"final_market_state_run": run_id},
+                        "artifacts": {"eventOverlayMetadata": str(event_metadata)},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            payload = serve_dashboard.load_scenario_dashboard_data()
+
+            self.assertEqual(payload["eventOverlay"]["metadata"]["article_count"], 7)
+            self.assertEqual(payload["intradayNewsTop5"][0]["title"], "KRW risk")
+            self.assertEqual(payload["intradayNewsOverlayStatus"]["jobType"], "intraday_news_overlay")
+            self.assertTrue(payload["intradayNewsScoreAdjustment"]["applied"])
+            self.assertEqual(payload["intradayNewsScoreAdjustment"]["weight"], 0.15)
+            self.assertEqual(payload["intradayNewsScoreAdjustment"]["scope"], "market_state_primary_only")
+            self.assertEqual(payload["topActiveScenarios"][0]["final_score"], 78)
+            self.assertNotIn("newsAdjustedScore", payload["topActiveScenarios"][0])
+            self.assertEqual(payload["primaryMarketState"]["baseScore"], 78)
+            self.assertAlmostEqual(payload["primaryMarketState"]["newsOverlayScore"], 87)
+            self.assertAlmostEqual(payload["primaryMarketState"]["newsAdjustedScore"], 79.35)
+            self.assertAlmostEqual(payload["primaryMarketState"]["score"], 79.35)
+            self.assertIn("latestIntradayNewsOverlay", payload["artifacts"])
+
+    def test_intraday_news_adjustment_is_date_gated_and_primary_only(self):
+        primary = {
+            "source": "daily_final",
+            "code": "usd_strength_krw_weakness",
+            "score": 80.0,
+            "dataAsOfDate": "2026-06-04",
+        }
+        news = [
+            {
+                "date": "2026-06-09T09:00:00+09:00",
+                "severity": 100,
+                "confidence": 100,
+                "scenarioLinks": ["usd_strength_krw_weakness"],
+            }
+        ]
+
+        status = {"provider": "gemini", "fallbackUsed": False}
+        adjusted, summary = serve_dashboard.apply_intraday_news_to_primary_market_state(primary, news, status)
+
+        self.assertFalse(summary["applied"])
+        self.assertEqual(summary["skipReason"], "news_date_mismatch")
+        self.assertFalse(adjusted["newsAdjustmentApplied"])
+        self.assertEqual(adjusted["score"], 80.0)
+
+    def test_intraday_news_adjustment_maps_nowcast_to_daily_scenario_links(self):
+        primary = {
+            "source": "intraday_nowcast",
+            "code": "krw_weakness_intraday",
+            "score": 40.0,
+            "asOfKst": "2026-06-09T10:00:00+09:00",
+        }
+        news = [
+            {
+                "date": "2026-06-09T09:00:00+09:00",
+                "severity": 80,
+                "confidence": 80,
+                "scenarioLinks": ["usd_strength_krw_weakness"],
+            }
+        ]
+
+        status = {"provider": "gemini", "fallbackUsed": False}
+        adjusted, summary = serve_dashboard.apply_intraday_news_to_primary_market_state(primary, news, status)
+
+        self.assertTrue(summary["applied"])
+        self.assertEqual(adjusted["baseScore"], 40.0)
+        self.assertEqual(adjusted["newsOverlayScore"], 80.0)
+        self.assertAlmostEqual(adjusted["score"], 46.0)
+
+    def test_intraday_news_adjustment_uses_only_same_day_news_items(self):
+        primary = {
+            "source": "daily_final",
+            "code": "usd_strength_krw_weakness",
+            "score": 50.0,
+            "dataAsOfDate": "2026-06-09",
+        }
+        news = [
+            {
+                "date": "2026-06-08T23:59:00+09:00",
+                "severity": 100,
+                "confidence": 100,
+                "scenarioLinks": ["usd_strength_krw_weakness"],
+            },
+            {
+                "date": "2026-06-09T09:00:00+09:00",
+                "severity": 60,
+                "confidence": 60,
+                "scenarioLinks": ["usd_strength_krw_weakness"],
+            },
+        ]
+
+        status = {"provider": "gemini", "fallbackUsed": False}
+        adjusted, summary = serve_dashboard.apply_intraday_news_to_primary_market_state(primary, news, status)
+
+        self.assertTrue(summary["applied"])
+        self.assertEqual(adjusted["newsOverlayScore"], 60.0)
+        self.assertAlmostEqual(adjusted["score"], 51.5)
+
+    def test_intraday_news_adjustment_skips_fallback_provider(self):
+        primary = {
+            "source": "intraday_nowcast",
+            "code": "kr_semiconductor_pressure_intraday",
+            "score": 58.0,
+            "asOfKst": "2026-06-10T15:00:00+09:00",
+        }
+        news = [
+            {
+                "date": "2026-06-10",
+                "severity": 90,
+                "confidence": 90,
+                "scenarioLinks": ["semiconductor_ai_cycle_shock"],
+            }
+        ]
+        status = {"provider": "fallback_after_gemini_error", "fallbackUsed": True}
+
+        adjusted, summary = serve_dashboard.apply_intraday_news_to_primary_market_state(primary, news, status)
+
+        self.assertFalse(summary["applied"])
+        self.assertEqual(summary["skipReason"], "news_provider_not_gemini_validated")
+        self.assertFalse(adjusted["newsAdjustmentApplied"])
+        self.assertEqual(adjusted["score"], 58.0)
 
 
 if __name__ == "__main__":

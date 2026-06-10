@@ -1,0 +1,2 @@
+date,source,title,url_or_ref,event_type,region,affected_assets,direction,severity,novelty,time_horizon,scenario_links,evidence_span,extract_confidence,needs_review,review_reason,dedupe_key,engine_version
+2026-06-10,Federal Reserve,미 연준 은행 스트레스 테스트 결과 발표 예정,https://www.federalreserve.gov/newsevents/pressreleases/bcreg20260609a.htm,credit,us,US Banks,risk_off,56.6,56.6,days,korea_domestic_financial_stress,미 연준 은행 스트레스 테스트 결과 발표 예정,56.6,N,,2026-06-10|federal reserve|미 연준 은행 스트레스 테스트 결과 발표 예정,phase5_event_overlay_v1

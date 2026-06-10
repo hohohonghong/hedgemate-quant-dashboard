@@ -330,6 +330,58 @@
       "dataVersion": "20260605",
       "generatedAtUtc": "2026-06-05T09:38:35Z",
       "engineVersion": "hedgemate_action_contract_v5"
+    },
+    "2d44047d97340be88235783101e6608254ef443df995e3187ce21f273a547328": {
+      "runId": "20260610T180128995827-0daf6dda",
+      "cacheKey": "2d44047d97340be88235783101e6608254ef443df995e3187ce21f273a547328",
+      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260610T180128995827-0daf6dda.json",
+      "portfolioRequestHash": "c6e65fdb94f79895a5905812ad286afa52a5025af6c67b409060831ee7f0faa1",
+      "portfolioRequestCanonical": "005930.KS:q:300|BTC-USD:q:1|MSFT:q:199",
+      "portfolioFingerprintHash": "b2ec045630c566c3981b993fc83af3cec3eb0f42b7249e650265c51ddeae7ab9",
+      "portfolioInputSha256": "fe610c41963d913c21f1f83c79ea46958e43558d5f0b6d1927e685abee60b499",
+      "portfolioTickers": [
+        "005930.KS",
+        "BTC-USD",
+        "MSFT"
+      ],
+      "dataVersion": "20260605",
+      "generatedAtUtc": "2026-06-10T09:05:17Z",
+      "engineVersion": "hedgemate_action_contract_v5"
+    },
+    "ab38d5221fcbef3e7501d4a6210b6ce5d414a9da109be065350002959a993a8a": {
+      "runId": "20260610T181158314456-36220963",
+      "cacheKey": "ab38d5221fcbef3e7501d4a6210b6ce5d414a9da109be065350002959a993a8a",
+      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260610T181158314456-36220963.json",
+      "portfolioRequestHash": "bd8b9648c858fa0555494407c3e59a06ff240af101c076bac598590c5d84f23c",
+      "portfolioRequestCanonical": "AAPL:q:5|MSFT:q:3|TSLA:q:1",
+      "portfolioFingerprintHash": "abae9f791ff0add11b901cc842ecbf68fabcb564c7360ba3009bac8ed2a7a142",
+      "portfolioInputSha256": "6cfbb8042cf07621b31531c17adeb335617a1ed36982aba7aad38aaedc02094b",
+      "portfolioTickers": [
+        "AAPL",
+        "MSFT",
+        "TSLA"
+      ],
+      "dataVersion": "20260605",
+      "generatedAtUtc": "2026-06-10T09:15:56Z",
+      "engineVersion": "hedgemate_action_contract_v5"
+    },
+    "9557b63c625c3eb4d5c8ff7444737da2c25f3c4aa2b3e9154558343030bc0977": {
+      "runId": "20260610T191953943306-da0898b3",
+      "cacheKey": "9557b63c625c3eb4d5c8ff7444737da2c25f3c4aa2b3e9154558343030bc0977",
+      "manifestPath": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\HedgeMate\\outputs\\analysis_cache\\20260610T191953943306-da0898b3.json",
+      "portfolioRequestHash": "08dea6b3b955dc2698c3d7e88f224b28469e57acc29d0b937105ae62e6ced2db",
+      "portfolioRequestCanonical": "005930.KS:q:3|035420.KS:q:2|035720.KS:q:8|NVDA:q:2",
+      "portfolioFingerprintHash": "171ae82b0fc11a54f7cb3ff130c0add3d5c6036cb00a553da68dd0e5590639be",
+      "portfolioInputSha256": "2f95a103676f2be1fbd4f0dd1859ad4d5c9d925cddf60ae06c23d72026b016a7",
+      "portfolioTickers": [
+        "005930.KS",
+        "035420.KS",
+        "035720.KS",
+        "NVDA"
+      ],
+      "dataVersion": "20260610",
+      "generatedAtUtc": "2026-06-10T10:23:59Z",
+      "engineVersion": "hedgemate_action_contract_v5"
     }
   }
 }

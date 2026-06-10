@@ -1,0 +1,121 @@
+{
+  "runId": "curated-finance-news-20260610",
+  "items": [
+    {
+      "date": "2026-06-10",
+      "source": "연합인포맥스",
+      "sourceKo": "연합인포맥스",
+      "title": "美물가 다시 고개 드나…5월 CPI, 4%대 전망 - 연합인포맥스",
+      "displayTitleKo": "美물가 다시 고개 드나…5월 CPI, 4%대 전망 - 연합인포맥스",
+      "url": "https://news.google.com/rss/articles/CBMicEFVX3lxTE1JMFE0ZE5aVzJoTmhVOHNwTENpdjZYbFlua3poRi0wRjZBLTJuMDVULXh4MGJGZVliLVpuUG8tUjk0TXhMVjFvZDA2aWJLWkZJOGthZlBybF9ibmZQR2t6MVNYOW05N2JlNFh3M1hpVFA?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 68.420625,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock",
+        "stagflation_reinflation_energy_shock"
+      ],
+      "evidenceSpan": "美물가 다시 고개 드나…5월 CPI, 4%대 전망 연합인포맥스",
+      "displaySummaryKo": "美물가 다시 고개 드나…5월 CPI, 4%대 전망 연합인포맥스",
+      "confidence": 65.0,
+      "needsReview": false
+    },
+    {
+      "date": "2026-06-10",
+      "source": "서울경제",
+      "sourceKo": "서울경제",
+      "title": "최태원 “차기 반도체 공장 입지, 지역·해외 등 다각도 검토” - 서울경제",
+      "displayTitleKo": "최태원 “차기 반도체 공장 입지, 지역·해외 등 다각도 검토” - 서울경제",
+      "url": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE9CNG5aR2lsZzU2eUJUYW5fRE1FWUgyQ0FQdXg0S05vcWZneURGNUFaanVLM2FPLTlMaEloNHdDNjcxWDluSjFzN1NjdjVDVk9VcEHSAVNBVV95cUxQQjliN0N4R2p1aTlHS0p5RFlzYmZpTVZOdnVBNXg2ZmFpQU5jOTlvYzdRdDFZdVQ1ZzNYZlU3M1Zod0lWMklLREFMVURRR0c4UUxlcw?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 62.175208,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "최태원 “차기 반도체 공장 입지, 지역·해외 등 다각도 검토” 서울경제",
+      "displaySummaryKo": "최태원 “차기 반도체 공장 입지, 지역·해외 등 다각도 검토” 서울경제",
+      "confidence": 65.0,
+      "needsReview": false
+    },
+    {
+      "date": "2026-06-10",
+      "source": "연합뉴스",
+      "sourceKo": "연합뉴스",
+      "title": "[속보] 코스피 급락에 매도 사이드카 발동 - 연합뉴스",
+      "displayTitleKo": "[속보] 코스피 급락에 매도 사이드카 발동 - 연합뉴스",
+      "url": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE5ydDczRHdKWHVQSGNVSnJIOGJETm0wUUFVc1Fvei1HUENfSjdISjVlNk1hV2JFTVp3bmlDRVdOM0pUU2NURk5xUG5BVmxkZklHb19MY3l3bFdTVEHSAWBBVV95cUxOZjAyX3RfTC1yVHZ2dGI1NHNua2xXNnFtWXpfWmFPdDJSX3BkUGJ3MkQwQldPSnZSVnVHY1FrazhGTmdRNmFmc0tUUFdvME45cjBFbkFBS3RkNDRVak1CQ3I?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 60.300833,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "[속보] 코스피 급락에 매도 사이드카 발동 연합뉴스",
+      "displaySummaryKo": "[속보] 코스피 급락에 매도 사이드카 발동 연합뉴스",
+      "confidence": 65.0,
+      "needsReview": false
+    },
+    {
+      "date": "2026-06-10",
+      "source": "한국경제",
+      "sourceKo": "한국경제",
+      "title": "20% 빠졌는데 지금 사라?…삼전·SK하닉에 무슨 일이 - 한국경제",
+      "displayTitleKo": "20% 빠졌는데 지금 사라?…삼전·SK하닉에 무슨 일이 - 한국경제",
+      "url": "https://news.google.com/rss/articles/CBMiWkFVX3lxTE04U1pRanZrOUtTdV9uV0FnTlp5Q2tkdFJGSHFCT1k4MDJIMEtvWjR4RmttTGh4N0dRT05DdkVhZnd6VUtqZ3JyYWFreHk4eTE3M0ZiSWt0MXJ1d9IBVEFVX3lxTE53YnVyZUNFdTNGcVlRemc5dnF6YmJrQ2lZNjl4S3N3ZVRyYlI3dDNNTGNlVUFVa2RGZURsdGEwRGJQcnE0MnFmQi1BeU9vZm5rRDYxRQ?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 59.835208,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "20% 빠졌는데 지금 사라?…삼전·SK하닉에 무슨 일이 한국경제",
+      "displaySummaryKo": "20% 빠졌는데 지금 사라?…삼전·SK하닉에 무슨 일이 한국경제",
+      "confidence": 65.0,
+      "needsReview": false
+    },
+    {
+      "date": "2026-06-10",
+      "source": "매일경제",
+      "sourceKo": "매일경제",
+      "title": "“코스피 급락 땡큐, 은행빚 땡겨서 풀매수”…이틀간 마통 6천억 늘었다 - 매일경제",
+      "displayTitleKo": "“코스피 급락 땡큐, 은행빚 땡겨서 풀매수”…이틀간 마통 6천억 늘었다 - 매일경제",
+      "url": "https://news.google.com/rss/articles/CBMiVEFVX3lxTE5uN01zc3BBdDRiY1YzTlNBak1reFFodk5fTF9aa1VVdFM0SHpLR0FRd0o2QTJnV3VSZ3NmN3A2dTNsMlRqMGxfUEpYdVRkVHc3Z1R5cQ?oc=5",
+      "eventType": "semiconductor",
+      "riskLabelKo": "반도체 · 반도체 투자심리 약화",
+      "region": "korea",
+      "affectedAssets": "005930.KS|000660.KS|SOXX|EWY",
+      "direction": "semiconductor_down",
+      "severity": 56.945625,
+      "novelty": 50.0,
+      "timeHorizon": "intraday",
+      "scenarioLinks": [
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "“코스피 급락 땡큐, 은행빚 땡겨서 풀매수”…이틀간 마통 6천억 늘었다 매일경제",
+      "displaySummaryKo": "“코스피 급락 땡큐, 은행빚 땡겨서 풀매수”…이틀간 마통 6천억 늘었다 매일경제",
+      "confidence": 65.0,
+      "needsReview": false
+    }
+  ]
+}

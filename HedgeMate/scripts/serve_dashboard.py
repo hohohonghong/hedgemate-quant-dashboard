@@ -15,7 +15,7 @@ import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -30,7 +30,6 @@ from market_data_cache import (
     expected_latest_market_date,
     incremental_update_raw_market_data,
     latest_raw_market_manifest,
-    raw_market_manifest_path,
     read_raw_market_rows,
     write_text_atomic,
 )
@@ -52,6 +51,7 @@ SCENARIO_REPORT_DIR = SCENARIO_OUTPUT_DIR / "reports"
 SCENARIO_VECTOR_DIR = SCENARIO_OUTPUT_DIR / "scenario_vectors"
 SCENARIO_NOWCAST_DIR = SCENARIO_OUTPUT_DIR / "nowcast_vectors"
 SCENARIO_EVENT_DIR = SCENARIO_OUTPUT_DIR / "events"
+SCENARIO_NEWS_INTRADAY_DIR = SCENARIO_OUTPUT_DIR / "news_intraday"
 SCENARIO_VALIDATION_DIR = SCENARIO_OUTPUT_DIR / "validation"
 SCENARIO_MANIFEST_PATH = SCENARIO_OUTPUT_DIR / "latest_manifest.json"
 HEDGEMATE_MANIFEST_PATH = ROOT / "outputs" / "latest_manifest.json"
@@ -63,6 +63,7 @@ LOCALHOST_CLIENTS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 MAX_JSON_BODY_BYTES = 2 * 1024 * 1024
 RUN_INPUT_DIR = ROOT / "outputs" / "run_inputs"
 FRONTEND_UI_BASE = "http://127.0.0.1:5173"
+MARKET_DATA_FRESH_COVERAGE_THRESHOLD = 0.90
 ANALYSIS_ENGINE_VERSION = "hedgemate_action_contract_v5"
 DEFAULT_EVENT_OVERLAY_STATUS = {
     "mode": "reviewed_fixture",
@@ -191,7 +192,9 @@ _UNIVERSE_ASSET_CACHE = None
 JOB_TIMEOUT_SECONDS = 15 * 60
 JOB_HEARTBEAT_SECONDS = 20
 MARKET_REFRESH_JOB_TYPE = "market_data_refresh"
+INTRADAY_NEWS_JOB_TYPE = "intraday_news_overlay"
 MARKET_REFRESH_MODES = {"market_data_only", "portfolio_reanalysis", "full_rebuild", "intraday_nowcast"}
+INTRADAY_NEWS_REFRESH_HOURS_KST = (9, 15, 21)
 KST = ZoneInfo("Asia/Seoul")
 STAGE_DETAILS = {
     "queued": ("대기 중", "작업 순서를 기다리고 있습니다."),
@@ -201,6 +204,7 @@ STAGE_DETAILS = {
     "updating active dashboard bundle": ("백엔드 최신 분석 결과 갱신 중", "선택 포트폴리오 기준 산출물을 active bundle에 연결합니다."),
     "refreshing": ("시장데이터 갱신 중", "시장데이터와 시나리오 산출물을 최신화합니다."),
     "running refresh pipeline": ("시장데이터 갱신 중", "raw market data와 final market state를 재생성합니다."),
+    "intraday news overlay": ("뉴스 오버레이 갱신 중", "시장국면 보조 설명용 Top5 뉴스 리스크를 갱신합니다."),
     "skipped_latest": ("최신 데이터 확인 완료", "이미 오늘 기준 최신 데이터입니다."),
     "blocked_by_existing_job": ("시장데이터 확인 대기", "다른 시장데이터 작업이 진행 중입니다."),
     "complete": ("완료", "작업이 완료되었습니다."),
@@ -630,6 +634,25 @@ def resolve_product_artifact(manifest, key, default_dir=None):
     raw_path = artifacts.get(key) if isinstance(artifacts, dict) else None
     raw_path = raw_path or manifest.get(f"{key}_path") or manifest.get(key)
     return resolve_any_artifact(raw_path, default_dir=default_dir)
+
+
+def resolve_scenario_manifest_artifact(manifest, key, default_dir=None):
+    raw_path = None
+    if isinstance(manifest, dict):
+        raw_path = manifest.get(f"{key}_path") or manifest.get(key)
+    return resolve_any_artifact(raw_path, default_dir=default_dir)
+
+
+def existing_artifact(path):
+    if not path:
+        return None
+    candidate = Path(path)
+    return candidate if candidate.exists() else None
+
+
+def data_version_from_run_id(run_id):
+    matches = re.findall(r"\d{8}", str(run_id or ""))
+    return matches[-1] if matches else None
 
 
 def resolve_active_gated_recommendation_artifact(manifest, key):
@@ -1306,6 +1329,69 @@ def latest_intraday_nowcast_status(reference_dt=None):
     }
 
 
+def current_intraday_news_anchor_kst(reference_dt=None):
+    reference = reference_dt or datetime.now(KST)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=KST)
+    else:
+        reference = reference.astimezone(KST)
+    allowed = [hour for hour in INTRADAY_NEWS_REFRESH_HOURS_KST if hour <= reference.hour]
+    if allowed:
+        return reference.replace(hour=max(allowed), minute=0, second=0, microsecond=0)
+    previous_day = reference - timedelta(days=1)
+    return previous_day.replace(hour=max(INTRADAY_NEWS_REFRESH_HOURS_KST), minute=0, second=0, microsecond=0)
+
+
+def latest_intraday_news_metadata_path():
+    return latest_path(SCENARIO_NEWS_INTRADAY_DIR, "news_overlay_metadata_*.json")
+
+
+def load_intraday_news_top5(metadata=None):
+    metadata = metadata if isinstance(metadata, dict) else {}
+    paths = metadata.get("paths") if isinstance(metadata.get("paths"), dict) else {}
+    top5_path = paths.get("top5") or metadata.get("top5_path")
+    if top5_path:
+        top5_path = Path(top5_path)
+    else:
+        top5_path = latest_path(SCENARIO_NEWS_INTRADAY_DIR, "news_top5_*.json")
+    payload = read_json(top5_path, {}) if top5_path and Path(top5_path).exists() else {}
+    items = payload.get("items") if isinstance(payload, dict) else payload if isinstance(payload, list) else []
+    if not isinstance(items, list):
+        items = []
+    return items[:5], Path(top5_path) if top5_path else None
+
+
+def latest_intraday_news_overlay_status(reference_dt=None):
+    anchor = current_intraday_news_anchor_kst(reference_dt=reference_dt)
+    metadata_path = latest_intraday_news_metadata_path()
+    metadata = read_json(metadata_path, {}) if metadata_path else {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    top5, top5_path = load_intraday_news_top5(metadata)
+    refresh_window = parse_iso_datetime(metadata.get("refresh_window_kst"))
+    generated_at = parse_iso_datetime(metadata.get("generated_at_kst") or metadata.get("generated_at"))
+    return {
+        "fresh": bool(metadata.get("status") == "success" and refresh_window and refresh_window.astimezone(KST) >= anchor),
+        "status": metadata.get("status") or ("missing" if not metadata else "unknown"),
+        "runId": metadata.get("run_id"),
+        "jobType": metadata.get("job_type") or INTRADAY_NEWS_JOB_TYPE,
+        "latestTimestampKst": generated_at.astimezone(KST).isoformat() if generated_at else None,
+        "requiredWindowKst": anchor.isoformat(),
+        "refreshWindowKst": refresh_window.astimezone(KST).isoformat() if refresh_window else None,
+        "allowedRefreshHoursKst": list(INTRADAY_NEWS_REFRESH_HOURS_KST),
+        "provider": metadata.get("provider"),
+        "fallbackUsed": bool(metadata.get("fallback_used")),
+        "fallbackReason": metadata.get("fallback_reason"),
+        "geminiModel": metadata.get("gemini_model"),
+        "geminiKeySource": metadata.get("gemini_key_source"),
+        "top5Count": len(top5),
+        "metadataPath": str(metadata_path) if metadata_path else None,
+        "top5Path": str(top5_path) if top5_path else None,
+        "marketStateUsage": metadata.get("market_state_usage") or "intraday_explanatory_overlay_only",
+        "reportRecommendationUsage": metadata.get("report_recommendation_usage") or "disabled",
+    }
+
+
 def raw_market_snapshot_status(raw_path, expected_date):
     if not raw_path or not Path(raw_path).exists():
         return None
@@ -1319,7 +1405,8 @@ def raw_market_snapshot_status(raw_path, expected_date):
     stale_tickers = [ticker for ticker in universe_tickers if latest_by_ticker.get(ticker, "") < expected_date]
     coverage_ratio = (len(universe_tickers) - len(stale_tickers)) / len(universe_tickers) if universe_tickers else None
     return {
-        "latestMarketDate": min(dates) if dates else None,
+        "oldestMarketDate": min(dates) if dates else None,
+        "latestMarketDate": max(dates) if dates else None,
         "maxMarketDate": max(dates) if dates else None,
         "failedTickers": [],
         "staleTickers": stale_tickers,
@@ -1332,12 +1419,13 @@ def raw_market_snapshot_status(raw_path, expected_date):
 def write_raw_market_snapshot_manifest(raw_path, data_version, status, expected_date):
     if not raw_path or not data_version or not status:
         return None
-    path = raw_market_manifest_path(OUTPUT_RAW_DIR, data_version)
+    path = OUTPUT_RAW_DIR / f"raw_market_daily_{data_version}_snapshot_status.json"
     payload = {
         "manifestVersion": "raw_market_snapshot_v1",
         "dataVersion": data_version,
         "outputSnapshot": str(raw_path),
         "targetLatestMarketDate": expected_date,
+        "oldestMarketDate": status.get("oldestMarketDate"),
         "latestMarketDate": status.get("latestMarketDate"),
         "maxMarketDate": status.get("maxMarketDate"),
         "failedTickers": status.get("failedTickers") or [],
@@ -1411,14 +1499,102 @@ def market_data_refresh_attempt_status(manifest, expected_date, reference_date=N
     }
 
 
+def data_version_value(value):
+    text = str(value or "").strip()
+    return int(text) if re.fullmatch(r"\d{8}", text) else None
+
+
+def is_newer_data_version(candidate, baseline):
+    candidate_value = data_version_value(candidate)
+    baseline_value = data_version_value(baseline)
+    return candidate_value is not None and baseline_value is not None and candidate_value > baseline_value
+
+
+def market_coverage_is_fresh(coverage_ratio):
+    if coverage_ratio in (None, ""):
+        return True
+    try:
+        return float(coverage_ratio) >= MARKET_DATA_FRESH_COVERAGE_THRESHOLD
+    except (TypeError, ValueError):
+        return False
+
+
+def daily_market_state_run_ids(data_version):
+    stamp = str(data_version or datetime.now(KST).strftime("%Y%m%d")).strip()
+    return f"scenario-refresh-{stamp}", f"final-refresh-{stamp}"
+
+
+def max_csv_date(path):
+    if not path or not Path(path).exists():
+        return None
+    dates = []
+    try:
+        with Path(path).open("r", encoding="utf-8", newline="") as handle:
+            for row in csv.DictReader(handle):
+                value = str(row.get("date") or row.get("as_of_date") or "").strip()
+                if value:
+                    dates.append(value[:10])
+    except OSError:
+        return None
+    return max(dates) if dates else None
+
+
+def scenario_final_output_status(data_version=None, expected_date=None):
+    scenario_run, final_run = daily_market_state_run_ids(data_version)
+    manifest = read_active_manifest()
+    final_path = SCENARIO_FINAL_DIR / f"final_market_state_daily_{final_run}.csv"
+    top_path = SCENARIO_FINAL_DIR / f"top_active_scenarios_{final_run}.json"
+    confidence_path = SCENARIO_FINAL_DIR / f"scenario_confidence_{final_run}.csv"
+    metadata_path = SCENARIO_REPORT_DIR / f"final_market_state_metadata_{final_run}.json"
+    vector_path = SCENARIO_VECTOR_DIR / f"current_scenario_vector_{final_run}.json"
+    top_payload = read_json(top_path, {}) if top_path.exists() else {}
+    metadata = read_json(metadata_path, {}) if metadata_path.exists() else {}
+    data_as_of_date = (
+        str(top_payload.get("date") or metadata.get("date") or "").strip()
+        or max_csv_date(final_path)
+    )
+    exists = all(path.exists() for path in (final_path, top_path, confidence_path, metadata_path))
+    reaches_expected_date = not expected_date or (bool(data_as_of_date) and str(data_as_of_date) >= str(expected_date))
+    active_run = scenario_manifest_final_run_id(manifest)
+    fresh = bool(exists and reaches_expected_date and active_run == final_run)
+    return {
+        "fresh": fresh,
+        "exists": exists,
+        "scenarioRunId": scenario_run,
+        "finalRunId": final_run,
+        "activeFinalRunId": active_run,
+        "dataAsOfDate": data_as_of_date or None,
+        "expectedDate": expected_date,
+        "finalPath": str(final_path),
+        "topActiveScenariosPath": str(top_path),
+        "confidencePath": str(confidence_path),
+        "metadataPath": str(metadata_path),
+        "vectorPath": str(vector_path),
+    }
+
+
 def latest_market_cache_status(data_version=None, reference_date=None):
     expected_date = expected_latest_market_date(reference_date)
     manifest_path, cache_manifest = latest_raw_market_manifest(OUTPUT_RAW_DIR)
     raw_path = raw_market_path_for_data_version(data_version)
     manifest_data_version = str(cache_manifest.get("dataVersion") or "") if cache_manifest else ""
-    should_use_raw_snapshot = bool(raw_path and raw_path.exists() and data_version and manifest_data_version != str(data_version))
+    requested_data_version = str(data_version or "")
+    should_use_raw_snapshot = bool(
+        raw_path
+        and raw_path.exists()
+        and requested_data_version
+        and (
+            not cache_manifest
+            or (
+                data_version_value(manifest_data_version) is not None
+                and data_version_value(requested_data_version) is not None
+                and data_version_value(manifest_data_version) < data_version_value(requested_data_version)
+            )
+        )
+    )
     snapshot_status = raw_market_snapshot_status(raw_path, expected_date) if should_use_raw_snapshot else None
     if snapshot_status:
+        oldest_market_date = snapshot_status.get("oldestMarketDate")
         latest_market_date = snapshot_status.get("latestMarketDate")
         max_market_date = snapshot_status.get("maxMarketDate")
         failed_tickers = snapshot_status.get("failedTickers") or []
@@ -1427,8 +1603,9 @@ def latest_market_cache_status(data_version=None, reference_date=None):
         manifest_path = write_raw_market_snapshot_manifest(raw_path, str(data_version), snapshot_status, expected_date)
         manifest_data_version = data_version
     elif cache_manifest:
-        latest_market_date = cache_manifest.get("latestMarketDate")
-        max_market_date = cache_manifest.get("maxMarketDate")
+        max_market_date = cache_manifest.get("maxMarketDate") or cache_manifest.get("latestMarketDate")
+        latest_market_date = max_market_date
+        oldest_market_date = cache_manifest.get("oldestMarketDate") or cache_manifest.get("latestMarketDate")
         failed_tickers = cache_manifest.get("failedTickers") or []
         stale_tickers = cache_manifest.get("staleTickers") or []
         coverage_ratio = cache_manifest.get("tickerCoverageRatio")
@@ -1438,6 +1615,7 @@ def latest_market_cache_status(data_version=None, reference_date=None):
             if candidate.exists():
                 raw_path = candidate
     else:
+        oldest_market_date = None
         latest_market_date = None
         max_market_date = None
         failed_tickers = []
@@ -1446,16 +1624,22 @@ def latest_market_cache_status(data_version=None, reference_date=None):
         manifest_data_version = None
     if not latest_market_date and raw_path and raw_path.exists():
         snapshot_status = raw_market_snapshot_status(raw_path, expected_date)
+        oldest_market_date = snapshot_status.get("oldestMarketDate") if snapshot_status else None
         latest_market_date = snapshot_status.get("latestMarketDate") if snapshot_status else None
         max_market_date = snapshot_status.get("maxMarketDate") if snapshot_status else None
         failed_tickers = snapshot_status.get("failedTickers") if snapshot_status else []
         stale_tickers = snapshot_status.get("staleTickers") if snapshot_status else []
         coverage_ratio = snapshot_status.get("tickerCoverageRatio") if snapshot_status else None
-    market_data_fresh = bool(latest_market_date and latest_market_date >= expected_date)
+    market_data_fresh = bool(
+        latest_market_date
+        and latest_market_date >= expected_date
+        and market_coverage_is_fresh(coverage_ratio)
+    )
     attempt_status = market_data_refresh_attempt_status(cache_manifest, expected_date, reference_date=reference_date)
     return {
         "marketDataFresh": market_data_fresh,
         **attempt_status,
+        "oldestMarketDate": oldest_market_date,
         "latestMarketDate": latest_market_date,
         "maxMarketDate": max_market_date,
         "expectedLatestMarketDate": expected_date,
@@ -1505,14 +1689,21 @@ def load_data_freshness(reference_date=None, manifest=None):
     scenario_lag_days = (data_date - scenario_date).days if data_date and scenario_date else None
     scenario_version_mismatch = bool(data_version and scenario_data_version and scenario_data_version != data_version)
     market_cache = latest_market_cache_status(data_version=data_version, reference_date=reference_date)
+    scenario_final = scenario_final_output_status(
+        data_version=market_cache.get("marketDataVersion") or data_version,
+        expected_date=market_cache.get("expectedLatestMarketDate"),
+    )
     intraday_status = latest_intraday_nowcast_status()
     market_data_fresh = bool(market_cache.get("marketDataFresh"))
+    market_cache_data_version = str(market_cache.get("marketDataVersion") or "").strip()
+    active_bundle_older_than_market_cache = is_newer_data_version(market_cache_data_version, data_version)
     needs_refresh = (
         (not market_data_fresh)
         or status != "FRESH"
         or bool(missing)
         or price_gap_summary["outOfPriceRangeRows"] > 0
         or scenario_version_mismatch
+        or active_bundle_older_than_market_cache
         or portfolio_input_mismatch
         or recommendation_portfolio_mismatch
     )
@@ -1530,6 +1721,10 @@ def load_data_freshness(reference_date=None, manifest=None):
     if scenario_version_mismatch:
         add_reason(
             f"scenario data_version {scenario_data_version} does not match active data_version {data_version}"
+        )
+    if active_bundle_older_than_market_cache:
+        add_reason(
+            f"active analysis bundle data_version {data_version} is older than market data cache {market_cache_data_version}"
         )
     if missing:
         add_reason("missing artifacts: " + ", ".join(row["key"] for row in missing))
@@ -1555,6 +1750,11 @@ def load_data_freshness(reference_date=None, manifest=None):
         "scenarioVectorLagDays": scenario_lag_days,
         "scenarioAnchorCoverageRatio": scenario_snapshot.get("anchor_ticker_coverage_ratio"),
         "scenarioDataQualityStatus": scenario_snapshot.get("data_quality_status"),
+        "scenarioFinalFresh": scenario_final.get("fresh"),
+        "scenarioFinalRunId": scenario_final.get("finalRunId"),
+        "activeScenarioFinalRunId": scenario_final.get("activeFinalRunId"),
+        "scenarioFinalDataAsOfDate": scenario_final.get("dataAsOfDate"),
+        "expectedScenarioFinalDataAsOfDate": scenario_final.get("expectedDate"),
         "generatedAtUtc": bundle.get("generated_at_utc") or manifest.get("generated_at_utc"),
         "freshnessStatus": status,
         "marketDataFresh": market_data_fresh,
@@ -1563,9 +1763,11 @@ def load_data_freshness(reference_date=None, manifest=None):
         "marketDataRefreshAttemptTargetLatestMarketDate": market_cache.get("marketDataRefreshAttemptTargetLatestMarketDate"),
         "marketDataRefreshAttemptCritical": market_cache.get("marketDataRefreshAttemptCritical"),
         "latestMarketDate": market_cache.get("latestMarketDate"),
+        "oldestMarketDate": market_cache.get("oldestMarketDate"),
         "maxMarketDate": market_cache.get("maxMarketDate"),
         "expectedLatestMarketDate": market_cache.get("expectedLatestMarketDate"),
         "marketDataVersion": market_cache.get("marketDataVersion"),
+        "activeBundleOlderThanMarketCache": active_bundle_older_than_market_cache,
         "marketDataManifestPath": market_cache.get("marketDataManifestPath"),
         "rawMarketPath": market_cache.get("rawMarketPath"),
         "marketDataFailedTickers": market_cache.get("failedTickers") or [],
@@ -1597,7 +1799,9 @@ def user_facing_freshness_reasons(data_freshness):
         if not reason_text:
             continue
         lower_reason = reason_text.lower()
-        if lower_reason.startswith("market data latest date"):
+        if lower_reason.startswith("scenario vector stale") or lower_reason.startswith("active analysis bundle data_version"):
+            display_reason = "최신 시장데이터는 반영됐지만, 현재 리포트는 이전 분석 결과입니다. 포트폴리오 분석을 다시 실행하면 새 기준으로 갱신됩니다."
+        elif lower_reason.startswith("market data latest date"):
             display_reason = "실시간 데이터 확인이 필요합니다."
         elif lower_reason.startswith("scenario data_version"):
             display_reason = "시나리오 데이터 상태 확인이 필요합니다."
@@ -1608,6 +1812,25 @@ def user_facing_freshness_reasons(data_freshness):
         if display_reason not in display_reasons:
             display_reasons.append(display_reason)
     return display_reasons
+
+
+def product_data_freshness_response(data_freshness):
+    response = dict(data_freshness or {})
+    raw_reasons = list(response.get("reasons") or [])
+    display_reasons = user_facing_freshness_reasons(response)
+    market_data_fresh = bool(response.get("marketDataFresh"))
+    analysis_refresh_needed = bool(
+        response.get("activeBundleOlderThanMarketCache")
+        or str(response.get("freshnessStatus") or "").upper() == "STALE"
+        or response.get("portfolioInputMismatch")
+        or response.get("recommendationPortfolioMismatch")
+    )
+    response["reasons"] = display_reasons
+    response["marketDataNeedsRefresh"] = not market_data_fresh
+    response["needsAnalysisRefresh"] = analysis_refresh_needed
+    if market_data_fresh and analysis_refresh_needed:
+        response["needsRefresh"] = False
+    return response
 
 
 def resolve_manifest_artifact(manifest, key, default_dir):
@@ -1631,6 +1854,20 @@ def final_run_id_from_filename(filename):
     name = Path(str(filename or "")).name
     m = re.search(r"final_market_state_daily_(.+)\.csv$", name)
     return m.group(1) if m else None
+
+
+def scenario_manifest_final_run_id(manifest=None):
+    manifest = manifest if isinstance(manifest, dict) else read_active_manifest()
+    return (
+        manifest.get("active_final_run")
+        or final_run_id_from_filename(manifest.get("active_final_market_state"))
+    )
+
+
+def product_manifest_final_run_id(product_manifest=None):
+    product_manifest = product_manifest if isinstance(product_manifest, dict) else read_product_manifest()
+    product_bundle = active_bundle(product_manifest)
+    return product_bundle.get("final_market_state_run") or product_manifest.get("active_final_run")
 
 
 def latest_path(directory, pattern):
@@ -1695,7 +1932,8 @@ def find_available_run_ids(processed_dir=OUTPUT_PROCESSED_DIR):
     return ordered
 
 
-def find_scenario_run_ids(final_dir=SCENARIO_FINAL_DIR):
+def find_scenario_run_ids(final_dir=None):
+    final_dir = final_dir or SCENARIO_FINAL_DIR
     run_ids = {}
     for path in final_dir.glob("final_market_state_daily_*.csv"):
         m = re.search(r"final_market_state_daily_(.+)\.csv$", path.name)
@@ -1705,16 +1943,12 @@ def find_scenario_run_ids(final_dir=SCENARIO_FINAL_DIR):
         run_id
         for run_id, _ in sorted(run_ids.items(), key=lambda item: (item[1], item[0]), reverse=True)
     ]
-    product_bundle = active_bundle()
     manifest = read_active_manifest()
-    active_run = (
-        product_bundle.get("final_market_state_run")
-        or read_product_manifest().get("active_final_run")
-        or manifest.get("active_final_run")
-        or final_run_id_from_filename(manifest.get("active_final_market_state"))
-    )
-    if active_run and active_run in ordered:
-        ordered = [active_run] + [run_id for run_id in ordered if run_id != active_run]
+    product_manifest = read_product_manifest()
+    for active_run in (scenario_manifest_final_run_id(manifest), product_manifest_final_run_id(product_manifest)):
+        if active_run and active_run in ordered:
+            ordered = [active_run] + [run_id for run_id in ordered if run_id != active_run]
+            break
     return ordered
 
 
@@ -2252,25 +2486,95 @@ def hedge_run_ready_for_product_update(run_id):
     return all(path.exists() for path in required)
 
 
+def latest_scenario_bundle_context(product_manifest=None):
+    product_manifest = product_manifest if isinstance(product_manifest, dict) else read_product_manifest()
+    product_bundle = active_bundle(product_manifest)
+    scenario_manifest = read_active_manifest()
+    scenario_run = scenario_manifest.get("active_scenario_run") or product_bundle.get("scenario_run") or product_manifest.get("active_scenario_run")
+    final_run = scenario_manifest_final_run_id(scenario_manifest) or product_bundle.get("final_market_state_run") or product_manifest.get("active_final_run") or scenario_run
+    data_version = (
+        scenario_manifest.get("data_version")
+        or data_version_from_run_id(final_run)
+        or data_version_from_run_id(scenario_run)
+        or product_bundle.get("data_version")
+        or product_manifest.get("data_version")
+        or active_data_version(product_manifest)
+    )
+    scenario_vector_as_of = (
+        scenario_manifest.get("scenario_vector_as_of_date")
+        or scenario_manifest.get("final_market_state_as_of_date")
+        or product_bundle.get("scenario_vector_as_of_date")
+        or product_manifest.get("scenario_vector_as_of_date")
+    )
+    has_scenario_manifest_context = bool(scenario_manifest.get("active_scenario_run") or scenario_manifest_final_run_id(scenario_manifest))
+    scenario_vector = (
+        resolve_scenario_manifest_artifact(scenario_manifest, "active_scenario_vector", SCENARIO_VECTOR_DIR)
+        or existing_artifact(SCENARIO_VECTOR_DIR / f"current_scenario_vector_{scenario_run}.csv")
+    )
+    final_scenario_vector = (
+        resolve_scenario_manifest_artifact(scenario_manifest, "active_final_scenario_vector", SCENARIO_VECTOR_DIR)
+        or existing_artifact(SCENARIO_VECTOR_DIR / f"current_scenario_vector_{final_run}.csv")
+    )
+    final_market_state = (
+        resolve_scenario_manifest_artifact(scenario_manifest, "active_final_market_state", SCENARIO_FINAL_DIR)
+        or existing_artifact(SCENARIO_FINAL_DIR / f"final_market_state_daily_{final_run}.csv")
+    )
+    scenario_confidence = (
+        resolve_scenario_manifest_artifact(scenario_manifest, "active_scenario_confidence", SCENARIO_FINAL_DIR)
+        or existing_artifact(SCENARIO_FINAL_DIR / f"scenario_confidence_{final_run}.csv")
+    )
+    top_active_scenarios = (
+        resolve_scenario_manifest_artifact(scenario_manifest, "active_top_active_scenarios", SCENARIO_FINAL_DIR)
+        or existing_artifact(SCENARIO_FINAL_DIR / f"top_active_scenarios_{final_run}.json")
+    )
+    final_metadata = (
+        resolve_scenario_manifest_artifact(scenario_manifest, "active_final_metadata", SCENARIO_REPORT_DIR)
+        or existing_artifact(SCENARIO_REPORT_DIR / f"final_market_state_metadata_{final_run}.json")
+    )
+    if not has_scenario_manifest_context:
+        scenario_vector = scenario_vector or resolve_product_artifact(product_manifest, "scenarioVector", SCENARIO_VECTOR_DIR)
+        final_scenario_vector = final_scenario_vector or resolve_product_artifact(product_manifest, "finalScenarioVector", SCENARIO_VECTOR_DIR)
+        final_market_state = final_market_state or resolve_product_artifact(product_manifest, "finalMarketState", SCENARIO_FINAL_DIR)
+        scenario_confidence = scenario_confidence or resolve_product_artifact(product_manifest, "scenarioConfidence", SCENARIO_FINAL_DIR)
+        top_active_scenarios = top_active_scenarios or resolve_product_artifact(product_manifest, "topActiveScenarios", SCENARIO_FINAL_DIR)
+        final_metadata = final_metadata or resolve_product_artifact(product_manifest, "finalMetadata", SCENARIO_REPORT_DIR)
+    return {
+        "manifest": product_manifest,
+        "scenarioManifest": scenario_manifest,
+        "scenarioRun": str(scenario_run) if scenario_run else None,
+        "finalRun": str(final_run) if final_run else None,
+        "dataVersion": str(data_version) if data_version else None,
+        "scenarioVectorAsOfDate": scenario_vector_as_of,
+        "artifacts": {
+            "scenarioVector": scenario_vector,
+            "finalScenarioVector": final_scenario_vector,
+            "finalMarketState": final_market_state,
+            "scenarioConfidence": scenario_confidence,
+            "topActiveScenarios": top_active_scenarios,
+            "finalMetadata": final_metadata,
+            "eventOverlayMetadata": resolve_product_artifact(product_manifest, "eventOverlayMetadata", SCENARIO_REPORT_DIR),
+            "finalRunbook": resolve_product_artifact(product_manifest, "finalRunbook", OUTPUT_REPORT_DIR),
+        },
+    }
+
+
 def active_bundle_context_for_update():
-    manifest = read_product_manifest()
-    bundle = active_bundle(manifest)
-    scenario_run = bundle.get("scenario_run") or manifest.get("active_scenario_run")
-    final_run = bundle.get("final_market_state_run") or manifest.get("active_final_run") or scenario_run
-    data_version = bundle.get("data_version") or manifest.get("data_version") or active_data_version(manifest)
+    context = latest_scenario_bundle_context()
+    scenario_run = context.get("scenarioRun")
+    final_run = context.get("finalRun")
+    data_version = context.get("dataVersion")
     if not scenario_run or not final_run or not data_version:
         return {}
-    return {
-        "manifest": manifest,
-        "scenarioRun": str(scenario_run),
-        "finalRun": str(final_run),
-        "dataVersion": str(data_version),
-        "scenarioVectorAsOfDate": bundle.get("scenario_vector_as_of_date") or manifest.get("scenario_vector_as_of_date"),
-    }
+    return context
 
 
 def add_artifact_arg(cmd, manifest, arg_name, artifact_key, default_dir=None):
     path = resolve_product_artifact(manifest, artifact_key, default_dir=default_dir)
+    if path:
+        cmd.extend([arg_name, str(path)])
+
+
+def add_path_arg(cmd, arg_name, path):
     if path:
         cmd.extend([arg_name, str(path)])
 
@@ -2379,15 +2683,15 @@ def build_product_update_commands(
         update_cmd.extend(["--portfolio-input", str(portfolio_input_path)])
     if context.get("scenarioVectorAsOfDate"):
         update_cmd.extend(["--scenario-vector-as-of-date", str(context["scenarioVectorAsOfDate"])])
-    manifest = context["manifest"]
-    add_artifact_arg(update_cmd, manifest, "--scenario-vector", "scenarioVector", SCENARIO_VECTOR_DIR)
-    add_artifact_arg(update_cmd, manifest, "--final-scenario-vector", "finalScenarioVector", SCENARIO_VECTOR_DIR)
-    add_artifact_arg(update_cmd, manifest, "--final-market-state", "finalMarketState", SCENARIO_FINAL_DIR)
-    add_artifact_arg(update_cmd, manifest, "--scenario-confidence", "scenarioConfidence", SCENARIO_FINAL_DIR)
-    add_artifact_arg(update_cmd, manifest, "--top-active-scenarios", "topActiveScenarios", SCENARIO_FINAL_DIR)
-    add_artifact_arg(update_cmd, manifest, "--final-metadata", "finalMetadata", SCENARIO_REPORT_DIR)
-    add_artifact_arg(update_cmd, manifest, "--event-overlay-metadata", "eventOverlayMetadata", SCENARIO_REPORT_DIR)
-    add_artifact_arg(update_cmd, manifest, "--final-runbook", "finalRunbook", OUTPUT_REPORT_DIR)
+    artifacts = context.get("artifacts") or {}
+    add_path_arg(update_cmd, "--scenario-vector", artifacts.get("scenarioVector"))
+    add_path_arg(update_cmd, "--final-scenario-vector", artifacts.get("finalScenarioVector"))
+    add_path_arg(update_cmd, "--final-market-state", artifacts.get("finalMarketState"))
+    add_path_arg(update_cmd, "--scenario-confidence", artifacts.get("scenarioConfidence"))
+    add_path_arg(update_cmd, "--top-active-scenarios", artifacts.get("topActiveScenarios"))
+    add_path_arg(update_cmd, "--final-metadata", artifacts.get("finalMetadata"))
+    add_path_arg(update_cmd, "--event-overlay-metadata", artifacts.get("eventOverlayMetadata"))
+    add_path_arg(update_cmd, "--final-runbook", artifacts.get("finalRunbook"))
     return [backtest_cmd, gate_cmd, update_cmd], backtest_run_id
 
 
@@ -2409,12 +2713,13 @@ def prepare_run_request(payload, job_id=None):
         str(DASHBOARD_ACTION_BOOTSTRAP_ITERATIONS),
     ]
     manifest = read_product_manifest()
-    data_version = (payload or {}).get("dataVersion") or active_data_version(manifest)
+    scenario_context = latest_scenario_bundle_context(manifest)
+    data_version = (payload or {}).get("dataVersion") or scenario_context.get("dataVersion") or active_data_version(manifest)
     if data_version:
         cmd.extend(["--data-version", str(data_version)])
     if bool((payload or {}).get("forceRefreshRaw")):
         cmd.append("--force-refresh-raw")
-    scenario_vector = resolve_product_artifact(manifest, "finalScenarioVector", default_dir=SCENARIO_VECTOR_DIR)
+    scenario_vector = (scenario_context.get("artifacts") or {}).get("finalScenarioVector") or resolve_product_artifact(manifest, "finalScenarioVector", default_dir=SCENARIO_VECTOR_DIR)
     if scenario_vector:
         cmd.extend(["--scenario-vector", str(scenario_vector)])
     prepared = {
@@ -2582,6 +2887,116 @@ def run_subprocess_with_timeout(runner, cmd, **kwargs):
         return runner(cmd, **kwargs)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"분석 제한 시간 {JOB_TIMEOUT_SECONDS // 60}분을 초과했습니다.") from exc
+
+
+def ensure_daily_auxiliary_raw_data(data_version, target_latest_date=None):
+    try:
+        import run_data_pipeline as hedgemate_pipeline
+    except ImportError as exc:
+        raise RuntimeError("Could not import HedgeMate raw FX/benchmark refresh helpers") from exc
+
+    hedgemate_pipeline.OUTPUT_RAW_DIR = OUTPUT_RAW_DIR
+    for filename in (f"raw_fx_daily_{data_version}.csv", f"raw_benchmark_daily_{data_version}.csv"):
+        path = OUTPUT_RAW_DIR / filename
+        if target_latest_date and path.exists():
+            latest_date = max_csv_date(path)
+            if latest_date and latest_date < str(target_latest_date):
+                path.unlink(missing_ok=True)
+
+    run_ts = datetime.now(timezone.utc)
+    start_dt = (run_ts - timedelta(days=365 * 5 + 10)).replace(hour=0, minute=0, second=0, microsecond=0)
+    end_dt = run_ts + timedelta(days=1)
+    period1 = int(start_dt.timestamp())
+    period2 = int(end_dt.timestamp())
+    ingested_at = run_ts.isoformat()
+    fx_file, _, fx_rate_map, fx_cached = hedgemate_pipeline.load_or_fetch_fx(
+        period1,
+        period2,
+        data_version,
+        ingested_at,
+    )
+    benchmark_file, _, benchmark_series, benchmark_symbol, benchmark_cached = hedgemate_pipeline.load_or_fetch_benchmark_symbol(
+        "^KS200",
+        "^KS11",
+        period1,
+        period2,
+        data_version,
+        ingested_at,
+    )
+    benchmark_latest = max((date_str for date_str, _ in benchmark_series), default=None)
+    return {
+        "fxRawPath": str(fx_file),
+        "fxLatestDate": max(fx_rate_map) if fx_rate_map else None,
+        "fxUsedCached": bool(fx_cached),
+        "benchmarkRawPath": str(benchmark_file),
+        "benchmarkLatestDate": benchmark_latest,
+        "benchmarkSymbol": benchmark_symbol,
+        "benchmarkUsedCached": bool(benchmark_cached),
+    }
+
+
+def refresh_daily_market_state_outputs(data_version, runner=subprocess.run, target_latest_date=None, force=False, status_callback=None):
+    before = scenario_final_output_status(data_version=data_version, expected_date=target_latest_date)
+    if before.get("fresh") and not force:
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "daily market-state final is already current",
+            **before,
+        }
+
+    scenario_run, final_run = daily_market_state_run_ids(data_version)
+    if status_callback:
+        status_callback("refreshing auxiliary raw data", "updating FX and benchmark raw cache")
+    auxiliary_raw = ensure_daily_auxiliary_raw_data(data_version, target_latest_date=target_latest_date)
+
+    commands = [
+        [
+            sys.executable,
+            str(SCENARIO_RESEARCH_ROOT / "scripts" / "run_market_state_pipeline.py"),
+            "--run-id",
+            scenario_run,
+            "--data-version",
+            str(data_version),
+        ],
+        [
+            sys.executable,
+            str(SCENARIO_RESEARCH_ROOT / "scripts" / "run_final_market_state_pipeline.py"),
+            "--run-id",
+            final_run,
+            "--scenario-run-id",
+            scenario_run,
+        ],
+    ]
+    stdout_by_step = {}
+    for index, cmd in enumerate(commands, start=1):
+        if status_callback:
+            label = "scenario market-state pipeline" if index == 1 else "final market-state merge"
+            status_callback(label, label)
+        completed = run_subprocess_with_timeout(
+            runner,
+            cmd,
+            cwd=str(ROOT.parent),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        stdout_by_step[f"step{index}"] = completed.stdout
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "daily market-state refresh failed")
+
+    after = scenario_final_output_status(data_version=data_version, expected_date=target_latest_date)
+    return {
+        "ok": bool(after.get("exists")),
+        "skipped": False,
+        "scenarioRunId": scenario_run,
+        "finalRunId": final_run,
+        "targetLatestMarketDate": target_latest_date,
+        "dataAsOfDate": after.get("dataAsOfDate"),
+        "fresh": after.get("fresh"),
+        "auxiliaryRaw": auxiliary_raw,
+        "stdout": stdout_by_step,
+    }
 
 
 def _start_job_heartbeat(job_id, stop_event):
@@ -2777,6 +3192,31 @@ def _run_refresh_market_data_job(job_id, payload, runner):
             progress_callback=on_progress,
         )
         manifest = result["manifest"]
+        target_latest_date = manifest.get("targetLatestMarketDate")
+        market_latest_date = manifest.get("maxMarketDate") or manifest.get("latestMarketDate")
+        market_ready_for_daily_state = bool(
+            target_latest_date
+            and market_latest_date
+            and str(market_latest_date) >= str(target_latest_date)
+            and market_coverage_is_fresh(manifest.get("tickerCoverageRatio"))
+        )
+        if market_ready_for_daily_state:
+            daily_market_state = refresh_daily_market_state_outputs(
+                data_version,
+                runner=runner,
+                target_latest_date=target_latest_date,
+                force=bool((payload or {}).get("forceDailyMarketState")),
+                status_callback=lambda stage, step: _update_run_job(job_id, stage=stage, currentStep=step),
+            )
+        else:
+            daily_market_state = {
+                "ok": False,
+                "skipped": True,
+                "reason": "raw market data did not reach the target latest date or coverage threshold",
+                "targetLatestMarketDate": target_latest_date,
+                "latestMarketDate": market_latest_date,
+                "tickerCoverageRatio": manifest.get("tickerCoverageRatio"),
+            }
         freshness = load_data_freshness(reference_date=datetime.now(KST).date())
         intraday_status = freshness.get("intradayNowcast")
         _update_run_job(
@@ -2798,6 +3238,7 @@ def _run_refresh_market_data_job(job_id, payload, runner):
                 "failedTickers": manifest.get("failedTickers") or [],
                 "staleTickers": manifest.get("staleTickers") or [],
                 "durationSeconds": manifest.get("durationSeconds"),
+                "dailyMarketState": daily_market_state,
                 "freshness": freshness,
                 "intradayNowcast": intraday_status,
                 "warning": "Some tickers failed to update; existing cached rows were kept."
@@ -3059,8 +3500,18 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
             "startedAt": _now_iso(),
             "completedAt": None,
         }
+    scenario_final_fresh = freshness.get("scenarioFinalFresh", True)
+    stale_market_tickers = freshness.get("marketDataStaleTickers") or []
+    failed_market_tickers = freshness.get("marketDataFailedTickers") or []
+    market_data_only_current = bool(
+        freshness.get("marketDataFresh")
+        and scenario_final_fresh
+        and not stale_market_tickers
+        and not failed_market_tickers
+    )
+    market_data_attempted_but_not_fresh = bool(freshness.get("marketDataRefreshAttempted") and not freshness.get("marketDataFresh"))
     should_skip_latest = not force and (
-        (mode == "market_data_only" and (freshness.get("marketDataFresh") or freshness.get("marketDataRefreshAttempted")))
+        (mode == "market_data_only" and (market_data_only_current or market_data_attempted_but_not_fresh))
         or (mode == "full_rebuild" and freshness.get("skipHeavyRefresh"))
         or (mode == "intraday_nowcast" and intraday_status and intraday_status.get("fresh"))
     )
@@ -3069,16 +3520,16 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
             skip_reason = "Market data and derived scenario/product artifacts are already current."
         elif mode == "intraday_nowcast":
             skip_reason = "Intraday 3-hour nowcast anchor is already current."
-        elif freshness.get("marketDataRefreshAttempted") and not freshness.get("marketDataFresh"):
+        elif market_data_attempted_but_not_fresh:
             skip_reason = (
                 "Market data refresh was already attempted today for the target latest market date; "
                 "remaining stale tickers are kept as warnings."
             )
         else:
             skip_reason = (
-                "Market data is already fresh. Use portfolio reanalysis for the selected portfolio."
+                "Market data and daily market-state outputs are already fresh. Use portfolio reanalysis for the selected portfolio."
                 if has_portfolio_context
-                else "Market data is already fresh for the latest completed trading day."
+                else "Market data and daily market-state outputs are already fresh for the latest completed trading day."
             )
         _update_run_job(
             job_id,
@@ -3108,6 +3559,152 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
         try:
             _update_run_job(job_id, status="running", stage=mode)
             _run_refresh_market_data_job(job_id, payload, runner)
+        except Exception as exc:
+            _update_run_job(
+                job_id,
+                status="failed",
+                stage="failed",
+                error=str(exc),
+                completedAt=datetime.now().isoformat(timespec="seconds"),
+            )
+        finally:
+            stop_heartbeat.set()
+
+    worker = thread_factory(target=worker_target, daemon=True)
+    worker.start()
+    return _snapshot_run_job(job_id)
+
+
+def is_intraday_news_refresh_job(job):
+    job = job or {}
+    return job.get("jobType") == INTRADAY_NEWS_JOB_TYPE or job.get("mode") == INTRADAY_NEWS_JOB_TYPE
+
+
+def latest_running_intraday_news_job():
+    with RUN_JOBS_LOCK:
+        job_ids = [
+            job_id
+            for job_id, job in RUN_JOBS.items()
+            if is_intraday_news_refresh_job(job) and job.get("status") in {"queued", "running"}
+        ]
+    snapshots = [
+        snapshot
+        for snapshot in (_snapshot_run_job(job_id) for job_id in job_ids)
+        if snapshot and snapshot.get("status") in {"queued", "running"}
+    ]
+    return snapshots[-1] if snapshots else None
+
+
+def _run_intraday_news_overlay_job(job_id, payload, runner):
+    data_version = str((payload or {}).get("dataVersion") or datetime.now(KST).strftime("%Y%m%d"))
+    run_stamp = str((payload or {}).get("runStamp") or datetime.now(KST).strftime("%Y%m%dT%H%M%S"))
+    trigger_reason = str((payload or {}).get("triggerReason") or (payload or {}).get("trigger_reason") or "scheduled")
+    force = bool((payload or {}).get("force"))
+    allow_network = not bool((payload or {}).get("noNetwork"))
+    model = str((payload or {}).get("model") or "gemini-2.5-flash-lite")
+
+    _update_run_job(job_id, stage="intraday news overlay", currentStep="refreshing intraday Top5 news overlay")
+    news_run_id = f"intraday-news-refresh-{run_stamp}"
+    cmd = [
+        sys.executable,
+        str(SCENARIO_RESEARCH_ROOT / "scripts" / "run_intraday_news_overlay_pipeline.py"),
+        "--run-id",
+        news_run_id,
+        "--data-version",
+        data_version,
+        "--trigger-reason",
+        trigger_reason,
+        "--model",
+        model,
+    ]
+    if force:
+        cmd.append("--force")
+    if not allow_network:
+        cmd.append("--no-network")
+    completed = run_subprocess_with_timeout(
+        runner,
+        cmd,
+        cwd=str(ROOT.parent),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "intraday news overlay refresh failed")
+    status = latest_intraday_news_overlay_status()
+    top5, _ = load_intraday_news_top5()
+    _update_run_job(
+        job_id,
+        status="completed",
+        stage="complete",
+        currentStep="complete",
+        intradayNewsOverlay=status,
+        result={
+            "ok": True,
+            "mode": INTRADAY_NEWS_JOB_TYPE,
+            "dataVersion": data_version,
+            "runId": news_run_id,
+            "stdout": completed.stdout,
+            "intradayNewsOverlay": status,
+            "intradayNewsTop5": top5,
+        },
+        error=None,
+        completedAt=datetime.now().isoformat(timespec="seconds"),
+    )
+
+
+def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread_factory=threading.Thread):
+    payload = payload or {}
+    running_job = latest_running_intraday_news_job()
+    if running_job:
+        running_job["attachedToExisting"] = True
+        return running_job
+
+    force = bool(payload.get("force"))
+    status = latest_intraday_news_overlay_status()
+    job_id = uuid.uuid4().hex
+    with RUN_JOBS_LOCK:
+        RUN_JOBS[job_id] = {
+            "jobId": job_id,
+            "jobType": INTRADAY_NEWS_JOB_TYPE,
+            "mode": INTRADAY_NEWS_JOB_TYPE,
+            "status": "queued",
+            "stage": "queued",
+            "currentStep": "대기 중",
+            "estimatedRemainingMessage": "뉴스 오버레이 작업 순서를 기다리고 있습니다.",
+            "lastHeartbeatAt": _now_iso(),
+            "elapsedSeconds": 0,
+            "timeoutSeconds": JOB_TIMEOUT_SECONDS,
+            "runId": None,
+            "error": None,
+            "result": None,
+            "intradayNewsOverlay": status,
+            "startedAt": _now_iso(),
+            "completedAt": None,
+        }
+
+    if status.get("fresh") and not force:
+        _update_run_job(
+            job_id,
+            status="skipped_latest",
+            stage="skipped_latest",
+            result={
+                "ok": True,
+                "skipped": True,
+                "mode": INTRADAY_NEWS_JOB_TYPE,
+                "reason": "Intraday news overlay is already current for the 09/15/21 KST window.",
+                "intradayNewsOverlay": status,
+            },
+            completedAt=datetime.now().isoformat(timespec="seconds"),
+        )
+        return _snapshot_run_job(job_id)
+
+    def worker_target():
+        stop_heartbeat = threading.Event()
+        _start_job_heartbeat(job_id, stop_heartbeat)
+        try:
+            _update_run_job(job_id, status="running", stage="intraday news overlay")
+            _run_intraday_news_overlay_job(job_id, payload, runner)
         except Exception as exc:
             _update_run_job(
                 job_id,
@@ -3277,6 +3874,137 @@ def lens_summary(rows):
     return sorted(grouped.values(), key=lambda item: (item["topScore"] is None, -(item["topScore"] or 0), item["lens"]))
 
 
+NEWS_ADJUSTED_WEIGHT = 0.15
+
+NOWCAST_TO_SCENARIO_LINKS = {
+    "krw_weakness_intraday": ["usd_strength_krw_weakness"],
+    "kr_semiconductor_pressure_intraday": ["semiconductor_ai_cycle_shock"],
+    "global_risk_spillover_intraday": [
+        "acute_global_stress_liquidity_crunch",
+        "china_trade_fragmentation_shock",
+    ],
+    "kr_risk_on_intraday": ["soft_landing_goldilocks"],
+}
+
+
+def numeric_or_none(value):
+    parsed = parse_float(value)
+    return parsed if isinstance(parsed, (int, float)) else None
+
+
+def kst_date_from_iso(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return text
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text[:10] if re.match(r"\d{4}-\d{2}-\d{2}", text) else None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=KST)
+    return parsed.astimezone(KST).date().isoformat()
+
+
+def news_overlay_dates(news_top5, news_status):
+    dates = []
+    for item in news_top5 or []:
+        if not isinstance(item, dict):
+            continue
+        date = kst_date_from_iso(item.get("date"))
+        if date and date not in dates:
+            dates.append(date)
+    if not dates and isinstance(news_status, dict):
+        for key in ("latestTimestampKst", "refreshWindowKst", "generatedAt"):
+            date = kst_date_from_iso(news_status.get(key))
+            if date and date not in dates:
+                dates.append(date)
+    return dates
+
+
+def same_day_news_allowed(base_date, news_top5, news_status):
+    base = kst_date_from_iso(base_date)
+    return bool(base and base in news_overlay_dates(news_top5, news_status))
+
+
+def news_items_for_base_date(base_date, news_top5, news_status):
+    base = kst_date_from_iso(base_date)
+    if not base:
+        return []
+    rows = [item for item in news_top5 or [] if isinstance(item, dict)]
+    dated_rows = [item for item in rows if kst_date_from_iso(item.get("date"))]
+    if dated_rows:
+        return [item for item in dated_rows if kst_date_from_iso(item.get("date")) == base]
+    return rows if same_day_news_allowed(base, rows, news_status) else []
+
+
+def news_item_score(item):
+    severity = numeric_or_none(item.get("severity"))
+    confidence = numeric_or_none(item.get("confidence"))
+    if confidence is not None and confidence <= 1:
+        confidence *= 100.0
+    if severity is None and confidence is None:
+        return None
+    if severity is None:
+        return confidence
+    if confidence is None:
+        return severity
+    return max(0.0, min(100.0, severity * 0.7 + confidence * 0.3))
+
+
+def build_news_score_by_scenario(news_top5):
+    scores = {}
+    for item in news_top5 or []:
+        score = news_item_score(item if isinstance(item, dict) else {})
+        if score is None:
+            continue
+        links = item.get("scenarioLinks") if isinstance(item, dict) else []
+        if not isinstance(links, list):
+            links = [part for part in str(links or "").split("|") if part]
+        for code in links:
+            key = str(code or "").strip()
+            if not key:
+                continue
+            scores[key] = max(scores.get(key, 0.0), score)
+    return scores
+
+
+def row_news_link_codes(row):
+    codes = []
+    for key in ("scenario_code", "nowcast_code", "code"):
+        value = str(row.get(key) or "").strip()
+        if value and value not in codes:
+            codes.append(value)
+        for mapped in NOWCAST_TO_SCENARIO_LINKS.get(value, []):
+            if mapped not in codes:
+                codes.append(mapped)
+    return codes
+
+
+def attach_intraday_news_adjustment(rows, news_top5, weight=NEWS_ADJUSTED_WEIGHT):
+    news_scores = build_news_score_by_scenario(news_top5)
+    adjusted = []
+    for row in rows or []:
+        next_row = dict(row)
+        base_score = numeric_or_none(next_row.get("final_score") or next_row.get("score") or next_row.get("activation_weight"))
+        news_score = None
+        for code in row_news_link_codes(next_row):
+            if code in news_scores:
+                news_score = max(news_score or 0.0, news_scores[code])
+        if base_score is not None and news_score is not None:
+            adjusted_score = max(0.0, min(100.0, (1.0 - weight) * base_score + weight * news_score))
+            next_row["baseFinalScore"] = round(base_score, 6)
+            next_row["newsOverlayScore"] = round(news_score, 6)
+            next_row["newsAdjustedScore"] = round(adjusted_score, 6)
+            next_row["newsAdjustmentWeight"] = weight
+            next_row["newsAdjustmentApplied"] = True
+        else:
+            next_row["newsAdjustmentApplied"] = False
+        adjusted.append(next_row)
+    return adjusted
+
+
 def scenario_state_run_id_from_metadata(metadata, fallback):
     state_path = metadata.get("state_path")
     if not state_path:
@@ -3298,18 +4026,207 @@ def build_data_freshness_note(display_date, data_date, snapshot_metadata):
     return "실시간 화면은 오늘 장중 nowcast를 우선 사용합니다. 완료 일봉 레이어는 내부 검증에만 보조로 처리합니다."
 
 
-def load_scenario_dashboard_data(run_id=None):
+NOWCAST_DISPLAY_FALLBACKS = {
+    "kr_risk_on_intraday": {
+        "nameKo": "한국장 장중 위험선호",
+        "interpretationKo": "KOSPI200, 대형주 breadth, 반도체와 원화 흐름이 같은 방향으로 개선되는지 보는 장중 위험선호 nowcast입니다.",
+    },
+    "global_risk_spillover_intraday": {
+        "nameKo": "글로벌 위험회피 한국 전이",
+        "interpretationKo": "미국 ETF와 반도체 proxy, 원화 흐름을 함께 보며 글로벌 risk-off가 한국장으로 전이되는지 점검합니다.",
+    },
+    "krw_weakness_intraday": {
+        "nameKo": "원화약세 장중 압력",
+        "interpretationKo": "USD/KRW와 한국 위험자산 흐름을 함께 보며 원화 기준 포트폴리오의 장중 환율 부담을 점검합니다.",
+    },
+    "kr_semiconductor_pressure_intraday": {
+        "nameKo": "한국 반도체 장중 부담",
+        "interpretationKo": "삼성전자, SK하이닉스와 글로벌 반도체 proxy를 함께 보며 반도체 노출의 장중 부담을 점검합니다.",
+    },
+    "kr_defensive_rotation_intraday": {
+        "nameKo": "한국장 방어주 상대 강세",
+        "interpretationKo": "방어 업종 basket이 성장/민감 업종보다 상대적으로 강한지 확인하는 장중 rotation 신호입니다.",
+    },
+}
+
+
+DAILY_SCENARIO_DISPLAY_FALLBACKS = {
+    "usd_strength_krw_weakness": "달러강세/원화약세",
+    "soft_landing_goldilocks": "골디락스/연착륙",
+    "slowdown_recession_deflation_risk": "경기둔화/침체",
+    "higher_for_longer_long_rate_shock": "장기금리 부담",
+    "stagflation_reinflation_energy_shock": "스태그플레이션/에너지",
+    "acute_global_stress_liquidity_crunch": "글로벌 스트레스",
+    "china_trade_fragmentation_shock": "중국/무역 분절",
+    "semiconductor_ai_cycle_shock": "반도체 AI 사이클",
+    "korea_domestic_financial_stress": "한국 금융 스트레스",
+    "geopolitical_escalation_supply_shock": "지정학/공급충격",
+}
+
+
+def text_looks_mojibake(value):
+    text = str(value or "")
+    if not text:
+        return False
+    markers = ("媛", "湲", "諛", "愿", "吏", "쨌", "?쒓", "?μ", "?꾩", "?먰")
+    return ("?" in text and re.search(r"[가-힣]", text)) or text.count("?") >= 2 or any(marker in text for marker in markers)
+
+
+def display_text(value, fallback=None):
+    text = str(value or "").strip()
+    if text and not text_looks_mojibake(text):
+        return text
+    return fallback or text
+
+
+def select_primary_nowcast(nowcast_leaders):
+    status_rank = {
+        "RISK_OFF": 0,
+        "STRESS": 1,
+        "WATCH": 2,
+        "RISK_ON": 3,
+        "ACTIVE": 4,
+        "OFF": 5,
+        "NEUTRAL": 5,
+    }
+
+    def sort_key(row):
+        state = str(row.get("status") or row.get("state") or "").upper()
+        score = numeric_or_none(row.get("score")) or 0.0
+        return (status_rank.get(state, 4), -score)
+
+    rows = [row for row in nowcast_leaders or [] if isinstance(row, dict)]
+    return sorted(rows, key=sort_key)[0] if rows else None
+
+
+def build_primary_market_state(top_active_scenarios, nowcast_leaders, nowcast_status, data_as_of_date, display_date=None):
+    nowcast_status = nowcast_status if isinstance(nowcast_status, dict) else {}
+    daily_note = f"정식 일간 국면 데이터는 {data_as_of_date} 기준입니다." if data_as_of_date else "정식 일간 국면 데이터 기준일을 확인할 수 없습니다."
+    nowcast_row = select_primary_nowcast(nowcast_leaders) if nowcast_status.get("fresh") else None
+    if nowcast_row:
+        code = str(nowcast_row.get("nowcast_code") or nowcast_row.get("scenario_code") or "")
+        fallback = NOWCAST_DISPLAY_FALLBACKS.get(code, {})
+        nowcast_as_of = nowcast_row.get("as_of_kst") or nowcast_status.get("latestTimestampKst")
+        nowcast_data_date = nowcast_row.get("date_kst") or kst_date_from_iso(nowcast_as_of) or display_date
+        return {
+            "source": "intraday_nowcast",
+            "isFresh": True,
+            "code": code,
+            "nameKo": display_text(nowcast_row.get("nowcast_name_ko") or nowcast_row.get("scenario_name_ko"), fallback.get("nameKo") or code),
+            "lens": nowcast_row.get("lens"),
+            "score": numeric_or_none(nowcast_row.get("score")),
+            "confidence": numeric_or_none(nowcast_row.get("confidence")),
+            "state": nowcast_row.get("status") or nowcast_row.get("state") or nowcast_row.get("display_state"),
+            "asOfKst": nowcast_as_of,
+            "dataAsOfDate": nowcast_data_date,
+            "officialDailyDataAsOfDate": data_as_of_date,
+            "interpretationKo": display_text(nowcast_row.get("interpretation_ko"), fallback.get("interpretationKo")),
+            "officialDailyBasisNote": daily_note,
+        }
+
+    daily_row = next((row for row in top_active_scenarios or [] if isinstance(row, dict)), {})
+    code = str(daily_row.get("scenario_code") or "")
+    score = daily_row.get("final_score") or daily_row.get("score") or daily_row.get("activation_weight")
+    confidence = daily_row.get("final_confidence") or daily_row.get("confidence")
+    is_daily_fresh = bool(display_date and data_as_of_date and str(display_date) == str(data_as_of_date))
+    fallback_name = DAILY_SCENARIO_DISPLAY_FALLBACKS.get(code, code)
+    return {
+        "source": "daily_final",
+        "isFresh": is_daily_fresh,
+        "code": code,
+        "nameKo": display_text(daily_row.get("scenario_name_ko") or daily_row.get("scenario_name"), fallback_name),
+        "lens": daily_row.get("lens"),
+        "score": numeric_or_none(score),
+        "confidence": numeric_or_none(confidence),
+        "state": daily_row.get("final_display_state") or daily_row.get("display_state") or daily_row.get("status"),
+        "asOfKst": None,
+        "dataAsOfDate": data_as_of_date,
+        "officialDailyDataAsOfDate": data_as_of_date,
+        "interpretationKo": display_text(daily_row.get("market_interpretation_ko")),
+        "officialDailyBasisNote": daily_note,
+    }
+
+
+def build_market_state_freshness(display_date, data_as_of_date, nowcast_status, primary_market_state=None):
+    nowcast_status = nowcast_status if isinstance(nowcast_status, dict) else {}
+    intraday_as_of = nowcast_status.get("latestTimestampKst")
+    if not intraday_as_of and isinstance(primary_market_state, dict):
+        intraday_as_of = primary_market_state.get("asOfKst")
+    return {
+        "displayDate": display_date,
+        "primarySource": primary_market_state.get("source") if isinstance(primary_market_state, dict) else None,
+        "primaryDataAsOfDate": primary_market_state.get("dataAsOfDate") if isinstance(primary_market_state, dict) else data_as_of_date,
+        "primaryAsOfKst": primary_market_state.get("asOfKst") if isinstance(primary_market_state, dict) else None,
+        "dailyFinalDataAsOfDate": data_as_of_date,
+        "intradayNowcastAsOfKst": intraday_as_of,
+        "intradayFresh": bool(nowcast_status.get("fresh")),
+        "dailyFinalStale": bool(display_date and data_as_of_date and str(display_date) != str(data_as_of_date)),
+    }
+
+
+def apply_intraday_news_to_primary_market_state(primary_market_state, news_top5, news_status):
+    summary = {
+        "applied": False,
+        "weight": NEWS_ADJUSTED_WEIGHT,
+        "scope": "market_state_primary_only",
+        "target": "primaryMarketState",
+        "baseScoreField": "primaryMarketState.score",
+        "adjustedScoreField": "primaryMarketState.newsAdjustedScore",
+        "newsDates": news_overlay_dates(news_top5, news_status),
+    }
+    if not isinstance(primary_market_state, dict) or not news_top5:
+        summary["skipReason"] = "missing_primary_or_news"
+        return primary_market_state, summary
+
+    status = news_status if isinstance(news_status, dict) else {}
+    if status.get("fallbackUsed") or status.get("provider") != "gemini":
+        summary["skipReason"] = "news_provider_not_gemini_validated"
+        summary["provider"] = status.get("provider")
+        summary["fallbackUsed"] = bool(status.get("fallbackUsed"))
+        primary_market_state["newsAdjustmentApplied"] = False
+        return primary_market_state, summary
+
+    if primary_market_state.get("source") == "intraday_nowcast":
+        base_date = kst_date_from_iso(primary_market_state.get("asOfKst"))
+    elif primary_market_state.get("source") == "daily_final":
+        base_date = kst_date_from_iso(primary_market_state.get("dataAsOfDate"))
+    else:
+        base_date = None
+    summary["baseDate"] = base_date
+
+    matching_news = news_items_for_base_date(base_date, news_top5, news_status)
+    if not matching_news:
+        summary["skipReason"] = "news_date_mismatch"
+        primary_market_state["newsAdjustmentApplied"] = False
+        return primary_market_state, summary
+
+    adjusted_row = attach_intraday_news_adjustment([primary_market_state], matching_news)[0]
+    if not adjusted_row.get("newsAdjustmentApplied"):
+        summary["skipReason"] = "no_matching_news_scenario"
+        primary_market_state["newsAdjustmentApplied"] = False
+        return primary_market_state, summary
+
+    primary_market_state.update(
+        {
+            "baseScore": adjusted_row.get("baseFinalScore"),
+            "newsOverlayScore": adjusted_row.get("newsOverlayScore"),
+            "newsAdjustedScore": adjusted_row.get("newsAdjustedScore"),
+            "newsAdjustmentWeight": adjusted_row.get("newsAdjustmentWeight"),
+            "newsAdjustmentApplied": True,
+            "score": adjusted_row.get("newsAdjustedScore"),
+        }
+    )
+    summary["applied"] = True
+    return primary_market_state, summary
+
+
+def load_scenario_dashboard_data(run_id=None, include_intraday_news=True):
     product_manifest = read_product_manifest()
-    product_bundle = active_bundle(product_manifest)
     manifest = read_active_manifest()
     runs = find_scenario_run_ids()
-    manifest_run_id = (
-        product_bundle.get("final_market_state_run")
-        or product_manifest.get("active_final_run")
-        or manifest.get("active_final_run")
-        or final_run_id_from_filename(manifest.get("active_final_market_state"))
-    )
-    target_run_id = run_id or manifest_run_id or (runs[0] if runs else None)
+    manifest_run_id = scenario_manifest_final_run_id(manifest)
+    product_run_id = product_manifest_final_run_id(product_manifest)
+    target_run_id = run_id or manifest_run_id or (runs[0] if runs else None) or product_run_id
     if not target_run_id:
         raise FileNotFoundError("Scenario research run not found")
 
@@ -3324,13 +4241,21 @@ def load_scenario_dashboard_data(run_id=None):
     top_path = SCENARIO_FINAL_DIR / f"top_active_scenarios_{target_run_id}.json"
     metadata_path = SCENARIO_REPORT_DIR / f"final_market_state_metadata_{target_run_id}.json"
     summary_path = SCENARIO_REPORT_DIR / f"final_market_state_summary_{target_run_id}.md"
-    vector_path = (
-        resolve_product_artifact(product_manifest, "finalScenarioVector", SCENARIO_VECTOR_DIR)
-        or resolve_product_artifact(product_manifest, "scenarioVector", SCENARIO_VECTOR_DIR)
+    target_vector_path = SCENARIO_VECTOR_DIR / f"current_scenario_vector_{target_run_id}.json"
+    target_vector_path = target_vector_path if target_vector_path.exists() else None
+    manifest_vector_path = (
+        resolve_manifest_artifact(manifest, "active_final_scenario_vector", SCENARIO_VECTOR_DIR)
         or resolve_manifest_artifact(manifest, "active_scenario_vector_json", SCENARIO_VECTOR_DIR)
         or resolve_manifest_artifact(manifest, "active_scenario_vector", SCENARIO_VECTOR_DIR)
-        or latest_path(SCENARIO_VECTOR_DIR, "current_scenario_vector_*.json")
     )
+    product_vector_path = (
+        resolve_product_artifact(product_manifest, "finalScenarioVector", SCENARIO_VECTOR_DIR)
+        or resolve_product_artifact(product_manifest, "scenarioVector", SCENARIO_VECTOR_DIR)
+    )
+    if run_id and run_id != manifest_run_id:
+        vector_path = target_vector_path or product_vector_path or manifest_vector_path or latest_path(SCENARIO_VECTOR_DIR, "current_scenario_vector_*.json")
+    else:
+        vector_path = target_vector_path or manifest_vector_path or product_vector_path or latest_path(SCENARIO_VECTOR_DIR, "current_scenario_vector_*.json")
     nowcast_path = latest_path(SCENARIO_NOWCAST_DIR, "current_intraday_nowcast_*.json")
     event_metadata_path = resolve_product_artifact(product_manifest, "eventOverlayMetadata", SCENARIO_REPORT_DIR) or latest_path(SCENARIO_REPORT_DIR, "event_overlay_metadata_*.json")
     event_review_path = latest_path(SCENARIO_REPORT_DIR, "event_overlay_review_*.md")
@@ -3348,6 +4273,14 @@ def load_scenario_dashboard_data(run_id=None):
     vector_rows = read_json_or_csv_rows(vector_path)
     nowcast_rows = read_json(nowcast_path, []) if nowcast_path else []
     nowcast_status = latest_intraday_nowcast_status()
+    news_status = {}
+    news_top5 = []
+    news_top5_path = None
+    news_metadata_path = None
+    if include_intraday_news:
+        news_status = latest_intraday_news_overlay_status()
+        news_top5, news_top5_path = load_intraday_news_top5()
+        news_metadata_path = latest_intraday_news_metadata_path()
     event_metadata = read_json(event_metadata_path, {}) if event_metadata_path else {}
     validation = latest_scenario_validation_payload()
 
@@ -3365,6 +4298,15 @@ def load_scenario_dashboard_data(run_id=None):
         key=lambda row: row.get("final_score") if isinstance(row.get("final_score"), (int, float)) else float("-inf"),
         reverse=True,
     )[:12]
+    top_active_scenarios = top_payload.get("top_active_scenarios", [])
+    news_adjusted_summary = {
+        "applied": False,
+        "weight": NEWS_ADJUSTED_WEIGHT,
+        "scope": "market_state_primary_only",
+        "target": "primaryMarketState",
+        "baseScoreField": "primaryMarketState.score",
+        "adjustedScoreField": "primaryMarketState.newsAdjustedScore",
+    }
     vector_leaders = sorted(
         vector_rows if isinstance(vector_rows, list) else [],
         key=lambda row: row.get("score") if isinstance(row.get("score"), (int, float)) else float("-inf"),
@@ -3375,6 +4317,25 @@ def load_scenario_dashboard_data(run_id=None):
         key=lambda row: row.get("score") if isinstance(row.get("score"), (int, float)) else float("-inf"),
         reverse=True,
     )[:8]
+    primary_market_state = build_primary_market_state(
+        top_active_scenarios,
+        nowcast_leaders,
+        nowcast_status,
+        data_as_of_date,
+        display_as_of_date,
+    )
+    if include_intraday_news:
+        primary_market_state, news_adjusted_summary = apply_intraday_news_to_primary_market_state(
+            primary_market_state,
+            news_top5,
+            news_status,
+        )
+    market_state_freshness = build_market_state_freshness(
+        display_as_of_date,
+        data_as_of_date,
+        nowcast_status,
+        primary_market_state,
+    )
 
     artifacts = {
         "finalMarketState": scenario_artifact(final_path),
@@ -3391,10 +4352,13 @@ def load_scenario_dashboard_data(run_id=None):
         "phase4Dashboard": scenario_artifact(phase4_dashboard_path),
         "phase5Dashboard": scenario_artifact(phase5_dashboard_path),
     }
+    if include_intraday_news:
+        artifacts["latestIntradayNewsOverlay"] = scenario_artifact(news_top5_path)
+        artifacts["intradayNewsOverlayMetadata"] = scenario_artifact(news_metadata_path)
     artifacts.update(validation.get("artifacts", {}))
     artifacts = {key: value for key, value in artifacts.items() if value}
 
-    return {
+    payload = {
         "runId": target_run_id,
         "runs": runs,
         "asOfDate": display_as_of_date,
@@ -3413,8 +4377,10 @@ def load_scenario_dashboard_data(run_id=None):
         },
         "dataFreshnessNote": data_freshness_note,
         "intradayNowcastStatus": nowcast_status,
+        "primaryMarketState": primary_market_state,
+        "marketStateFreshness": market_state_freshness,
         "summaryBullets": markdown_bullets(summary_path, limit=8),
-        "topActiveScenarios": top_payload.get("top_active_scenarios", []),
+        "topActiveScenarios": top_active_scenarios,
         "topMarketRows": top_market_rows,
         "stateCounts": state_counts(rows_for_date),
         "lensSummary": lens_summary(rows_for_date),
@@ -3428,6 +4394,16 @@ def load_scenario_dashboard_data(run_id=None):
         "validation": validation,
         "artifacts": artifacts,
     }
+    if include_intraday_news:
+        payload.update(
+            {
+                "intradayNewsOverlayStatus": news_status,
+                "intradayNewsTop5": news_top5[:5],
+                "intradayNewsScoreAdjustment": news_adjusted_summary,
+                "latestIntradayNewsOverlay": scenario_artifact(news_top5_path),
+            }
+        )
+    return payload
 
 
 def load_dashboard_data(run_id, product_manifest=None, include_execution_plan=True):
@@ -3608,6 +4584,31 @@ PRODUCT_DASHBOARD_COMPACT_HEDGE_ROW_KEYS = (
 )
 
 PRODUCT_DASHBOARD_COMPACT_ROW_PREVIEW_LIMIT = 5
+INTRADAY_NEWS_MANIFEST_KEYS = {
+    "latestIntradayNewsOverlay",
+    "intradayNewsOverlayStatus",
+    "intradayNewsTop5",
+}
+INTRADAY_NEWS_ARTIFACT_KEYS = {
+    "latestIntradayNewsOverlay",
+    "intradayNewsOverlayMetadata",
+}
+
+
+def strip_intraday_news_from_product_manifest(manifest):
+    if not isinstance(manifest, dict):
+        return manifest
+    sanitized = dict(manifest)
+    for key in INTRADAY_NEWS_MANIFEST_KEYS:
+        sanitized.pop(key, None)
+    artifacts = sanitized.get("artifacts")
+    if isinstance(artifacts, dict):
+        sanitized["artifacts"] = {
+            key: value
+            for key, value in artifacts.items()
+            if key not in INTRADAY_NEWS_ARTIFACT_KEYS
+        }
+    return sanitized
 
 
 def compact_product_dashboard_payload(dashboard, hedge_row_limit=PRODUCT_DASHBOARD_COMPACT_ROW_PREVIEW_LIMIT):
@@ -5122,7 +6123,9 @@ def has_running_analysis_job():
         job_ids = [
             job_id
             for job_id, job in RUN_JOBS.items()
-            if not is_market_refresh_job(job) and job.get("status") in {"queued", "running"}
+            if not is_market_refresh_job(job)
+            and not is_intraday_news_refresh_job(job)
+            and job.get("status") in {"queued", "running"}
         ]
     for job_id in job_ids:
         snapshot = _snapshot_run_job(job_id)
@@ -5236,23 +6239,27 @@ def load_product_dashboard_data(manifest=None, compact=False):
     manifest = manifest if manifest is not None else read_product_manifest()
     if not manifest:
         manifest = fallback_product_manifest()
-    bundle = active_bundle(manifest)
+    product_manifest = strip_intraday_news_from_product_manifest(manifest)
+    bundle = active_bundle(product_manifest)
     if not bundle:
         raise FileNotFoundError("HedgeMate active bundle manifest not found")
-    hedge_run = bundle.get("hedgemate_run") or manifest.get("active_hedgemate_run")
-    final_run = bundle.get("final_market_state_run") or manifest.get("active_final_run")
+    hedge_run = bundle.get("hedgemate_run") or product_manifest.get("active_hedgemate_run")
+    final_run = bundle.get("final_market_state_run") or product_manifest.get("active_final_run")
     if not hedge_run or not final_run:
         raise FileNotFoundError("Active bundle is missing hedge or scenario run")
-    hedge = load_dashboard_data(hedge_run, product_manifest=manifest, include_execution_plan=not compact)
-    scenario = load_scenario_dashboard_data(final_run)
-    data_freshness = load_data_freshness(manifest=manifest)
-    backtest = load_backtest_payload(manifest)
-    event_overlay_status = normalized_event_overlay_status(manifest.get("event_overlay_status"))
+    hedge = load_dashboard_data(hedge_run, product_manifest=product_manifest, include_execution_plan=not compact)
+    try:
+        scenario = load_scenario_dashboard_data(include_intraday_news=False)
+    except FileNotFoundError:
+        scenario = load_scenario_dashboard_data(final_run, include_intraday_news=False)
+    data_freshness = load_data_freshness(manifest=product_manifest)
+    backtest = load_backtest_payload(product_manifest)
+    event_overlay_status = normalized_event_overlay_status(product_manifest.get("event_overlay_status"))
     recommendation_decision = build_recommendation_decision(hedge, backtest, data_freshness, event_overlay_status)
-    action_payload = load_action_plan_payload(manifest, recommendation_decision)
-    integrity = active_bundle_integrity(manifest)
+    action_payload = load_action_plan_payload(product_manifest, recommendation_decision)
+    integrity = active_bundle_integrity(product_manifest)
     product_status, product_status_reasons = build_product_status(
-        manifest,
+        product_manifest,
         bundle,
         data_freshness,
         recommendation_decision,
@@ -5265,16 +6272,32 @@ def load_product_dashboard_data(manifest=None, compact=False):
         product_status_reasons,
         integrity,
     )
+    data_freshness_response = product_data_freshness_response(data_freshness)
+    stale_reasons = user_facing_freshness_reasons(data_freshness)
+    product_manifest_response = dict(product_manifest)
+    product_manifest_response["stale_reasons"] = stale_reasons
+    product_manifest_response["active_bundle"] = dict(bundle)
+    product_manifest_response["active_bundle"]["stale_reasons"] = stale_reasons
+    bundle_response = dict(bundle)
+    bundle_response["stale_reasons"] = stale_reasons
+    if isinstance(hedge, dict) and isinstance(hedge.get("activeManifest"), dict):
+        hedge = dict(hedge)
+        hedge_manifest = dict(hedge["activeManifest"])
+        hedge_manifest["stale_reasons"] = stale_reasons
+        if isinstance(hedge_manifest.get("active_bundle"), dict):
+            hedge_manifest["active_bundle"] = dict(hedge_manifest["active_bundle"])
+            hedge_manifest["active_bundle"]["stale_reasons"] = stale_reasons
+        hedge["activeManifest"] = hedge_manifest
     return {
         "serverContractVersion": "action_contract_v3",
-        "manifest": manifest,
-        "activeBundle": bundle,
+        "manifest": product_manifest_response,
+        "activeBundle": bundle_response,
         "productStatus": product_status,
         "productStatusReasons": product_status_reasons,
         "activeBundleIntegrity": integrity,
-        "freshnessStatus": manifest.get("freshness_status") or bundle.get("freshness_status"),
-        "staleReasons": manifest.get("stale_reasons") or bundle.get("stale_reasons") or [],
-        "dataFreshness": data_freshness,
+        "freshnessStatus": product_manifest.get("freshness_status") or bundle.get("freshness_status"),
+        "staleReasons": stale_reasons,
+        "dataFreshness": data_freshness_response,
         "hedge": hedge,
         "scenario": scenario,
         "backtest": backtest,
@@ -5289,8 +6312,9 @@ def load_product_dashboard_data(manifest=None, compact=False):
 def load_product_dashboard_for_portfolio(payload, compact=False):
     manifest = read_product_manifest()
     mutate_active_bundle = bool((payload or {}).get("mutateActiveBundle"))
-    data_version = (payload or {}).get("dataVersion") or active_data_version(manifest)
-    scenario_vector = resolve_product_artifact(manifest, "finalScenarioVector", default_dir=SCENARIO_VECTOR_DIR)
+    scenario_context = latest_scenario_bundle_context(manifest)
+    data_version = (payload or {}).get("dataVersion") or scenario_context.get("dataVersion") or active_data_version(manifest)
+    scenario_vector = (scenario_context.get("artifacts") or {}).get("finalScenarioVector") or resolve_product_artifact(manifest, "finalScenarioVector", default_dir=SCENARIO_VECTOR_DIR)
     cache_meta = analysis_cache_key(payload or {}, data_version=data_version, scenario_vector=scenario_vector)
     dashboard_manifest = None
     cache_lookup = {
@@ -5612,7 +6636,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path not in {"/api/run", "/api/price-lookup", "/api/portfolio/preview", "/api/refresh-market-data", "/api/product-dashboard"}:
+        if parsed.path not in {"/api/run", "/api/price-lookup", "/api/portfolio/preview", "/api/refresh-market-data", "/api/refresh-intraday-news", "/api/product-dashboard"}:
             self.send_error(HTTPStatus.NOT_FOUND, "Unknown endpoint")
             return
         if self._reject_non_local_client():
@@ -5641,6 +6665,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return self._json_response(dashboard)
             if parsed.path == "/api/refresh-market-data":
                 result = launch_refresh_market_data_job(payload)
+                status = HTTPStatus.OK if result.get("status") == "skipped_latest" else HTTPStatus.ACCEPTED
+                return self._json_response(result, status=status)
+            if parsed.path == "/api/refresh-intraday-news":
+                result = launch_intraday_news_overlay_job(payload)
                 status = HTTPStatus.OK if result.get("status") == "skipped_latest" else HTTPStatus.ACCEPTED
                 return self._json_response(result, status=status)
             prepared_request = prepare_run_request(payload)

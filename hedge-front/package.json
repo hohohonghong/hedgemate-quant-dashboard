@@ -11,6 +11,7 @@
     "dev": "vite",
     "build": "node scripts/build.mjs",
     "qa:browser": "node scripts/browserQa.mjs",
+    "qa:improvement-report": "node scripts/improvementReportQa.mjs",
     "qa:portfolio-matrix": "node scripts/portfolioMatrixQa.mjs",
     "qa:scenario-guide": "node scripts/scenarioGuideQa.mjs",
     "qa:viewmodel": "node scripts/viewModelQa.mjs",

@@ -1,0 +1,53 @@
+{
+  "runId": "intraday-news-refresh-20260610T122256",
+  "items": [
+    {
+      "date": "2026-06-10",
+      "source": "Federal Reserve",
+      "sourceKo": "미 연준",
+      "title": "미 연준 은행 스트레스 테스트 결과 발표",
+      "displayTitleKo": "미 연준 은행 스트레스 테스트 결과 발표",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/bcreg20260609a.htm",
+      "eventType": "credit",
+      "riskLabelKo": "시장 리스크 · 위험회피 강화",
+      "region": "us",
+      "affectedAssets": "US Banks",
+      "direction": "risk_off",
+      "severity": 50.0,
+      "novelty": 59.0,
+      "timeHorizon": "days",
+      "scenarioLinks": [
+        "acute_global_stress_liquidity_crunch"
+      ],
+      "evidenceSpan": "연례 은행 스트레스 테스트 결과 발표",
+      "displaySummaryKo": "연례 은행 스트레스 테스트 결과 발표",
+      "confidence": 0.8,
+      "needsReview": true
+    },
+    {
+      "date": "2026-06-10",
+      "source": "직썰",
+      "sourceKo": "직썰",
+      "title": "환율 급등 및 코스피 폭락",
+      "displayTitleKo": "환율 급등 및 코스피 폭락",
+      "url": "https://news.google.com/rss/articles/CBMiaEFVX3lxTE9ycW8taS1iLV9Kcnhsczh2QzItOWxsOTdvUDhtbEQ1d1UtNkFrRkM1LW1vNjRTWTh1MjNoSThnMTFScDJJc1ZBUC1KVWh4SW05TnlEVjNoZThWZDY3Ym1uTHZVNHFCRjJV0gFsQVVfeXFMTTFjaFladHZwcDBudkp3Y3N5SGFROU5wVi1zcU9MQUpyVUFQNUFQQklFcndLLTJKNUNaa1BpdWNMblRweFdIWVpPem01WTQ3SVFjZ3p2UHpiZlJVT1NhMXNtc3pZLXJ6OXp6Rjdl?oc=5",
+      "eventType": "fx",
+      "riskLabelKo": "환율 · 환율 변동성 확대",
+      "region": "asia",
+      "affectedAssets": "KRW, KOSPI",
+      "direction": "fx_pressure",
+      "severity": 8.0,
+      "novelty": 70.0,
+      "timeHorizon": "days",
+      "scenarioLinks": [
+        "acute_global_stress_liquidity_crunch",
+        "usd_strength_krw_weakness",
+        "semiconductor_ai_cycle_shock"
+      ],
+      "evidenceSpan": "환율 1560원 치솟고 코스피 8% 폭락",
+      "displaySummaryKo": "환율 1560원 치솟고 코스피 8% 폭락",
+      "confidence": 0.9,
+      "needsReview": true
+    }
+  ]
+}

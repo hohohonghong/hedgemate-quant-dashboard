@@ -256,6 +256,15 @@ export const refreshMarketData = (payload = {}, options = {}) => {
   });
 };
 
+export const refreshIntradayNews = (payload = {}, options = {}) => {
+  return hedgemateFetch('/refresh-intraday-news', {
+    method: 'POST',
+    signal: options.signal,
+    timeoutMs: options.timeoutMs,
+    body: JSON.stringify(payload),
+  });
+};
+
 export const pollRunStatus = async (jobId, onUpdate, options = {}) => {
   const intervalMs = options.intervalMs ?? 2500;
   const timeoutMs = options.timeoutMs ?? 15 * 60 * 1000;

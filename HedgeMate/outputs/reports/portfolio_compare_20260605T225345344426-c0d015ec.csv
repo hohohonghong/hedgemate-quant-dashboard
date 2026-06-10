@@ -1,3 +1,0 @@
-scenario,vol_annual,mdd,cvar_95,annual_return_krw,sharpe_krw_proxy,vol_improve_pct,mdd_improve_pct,cvar_improve_pct,sharpe_improve_pct,stress_improve,no_recommendation_reason
-기존 포트폴리오,0.241037,-0.46851,-0.03285,0.281841,1.044824,0.0,0.0,0.0,0.0,0.0,Gate 통과 후보가 없어 참고안을 표시합니다. 리스크 관리가 어렵습니다.
-참고안(1:1) - 114800.KS,0.195791,-0.419676,-0.025998,0.264439,1.197399,18.771679,10.423214,20.859908,14.602982,0.000429,Gate 통과 후보가 없어 참고안을 표시합니다. 리스크 관리가 어렵습니다.

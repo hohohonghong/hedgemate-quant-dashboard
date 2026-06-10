@@ -1,0 +1,83 @@
+{
+  "status": "success",
+  "run_id": "trusted-source-check2-20260610",
+  "job_type": "intraday_news_overlay",
+  "pipeline_phase": "intraday_news_market_state_only",
+  "engine_version": "intraday_news_overlay_v1",
+  "schema_version": "intraday_news_extraction_schema_v1",
+  "event_extraction_schema_version": "phase5_event_extraction_schema_v1",
+  "data_version": "20260610",
+  "generated_at": "2026-06-10T07:12:02.277387+00:00",
+  "generated_at_kst": "2026-06-10T16:12:02.277387+09:00",
+  "refresh_window_kst": "2026-06-10T15:00:00+09:00",
+  "allowed_refresh_hours_kst": [
+    9,
+    15,
+    21
+  ],
+  "trigger_reason": "scheduled",
+  "candidate_count": 1,
+  "ranked_candidate_count": 1,
+  "source_limit": 10,
+  "gemini_input_count": 1,
+  "gemini_input_min": 5,
+  "gemini_input_max": 10,
+  "ui_top_limit": 5,
+  "top5_count": 1,
+  "article_event_count": 1,
+  "daily_overlay_count": 1,
+  "needs_review_count": 0,
+  "schema_error_count": 0,
+  "schema_errors_sample": [],
+  "source_statuses": [
+    {
+      "source": "gdelt",
+      "candidate_count": 0,
+      "fresh_candidate_count": 0,
+      "stale_candidate_count": 0,
+      "limit": 10,
+      "status": "ok"
+    },
+    {
+      "source": "google_news_rss",
+      "candidate_count": 0,
+      "fresh_candidate_count": 0,
+      "stale_candidate_count": 0,
+      "limit": 10,
+      "status": "ok"
+    },
+    {
+      "source": "official_rss",
+      "candidate_count": 10,
+      "fresh_candidate_count": 1,
+      "stale_candidate_count": 9,
+      "limit": 10,
+      "status": "ok"
+    },
+    {
+      "source": "naver",
+      "candidate_count": 0,
+      "fresh_candidate_count": 0,
+      "stale_candidate_count": 0,
+      "limit": 10,
+      "status": "ok"
+    }
+  ],
+  "provider": "gemini",
+  "fallback_used": false,
+  "fallback_reason": null,
+  "gemini_model": "gemini-2.5-flash-lite",
+  "gemini_key_source": "project/.secrets/gemini_api_key.txt",
+  "gemini_key_present": true,
+  "market_state_usage": "intraday_explanatory_overlay_only",
+  "report_recommendation_usage": "disabled",
+  "phase6_merge_ready": false,
+  "paths": {
+    "candidates": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\news_intraday\\news_candidates_trusted-source-check2-20260610.csv",
+    "ranked": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\news_intraday\\news_ranked_trusted-source-check2-20260610.csv",
+    "article": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\news_intraday\\news_overlay_article_trusted-source-check2-20260610.csv",
+    "daily": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\news_intraday\\news_overlay_daily_trusted-source-check2-20260610.csv",
+    "top5": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\news_intraday\\news_top5_trusted-source-check2-20260610.json",
+    "metadata": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\news_intraday\\news_overlay_metadata_trusted-source-check2-20260610.json"
+  }
+}

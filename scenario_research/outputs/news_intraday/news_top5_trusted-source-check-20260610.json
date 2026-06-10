@@ -1,0 +1,28 @@
+{
+  "runId": "trusted-source-check-20260610",
+  "items": [
+    {
+      "date": "2026-06-10",
+      "source": "Federal Reserve",
+      "sourceKo": "미 연준",
+      "title": "미 연준 은행 스트레스 테스트 결과 발표 예정",
+      "displayTitleKo": "미 연준 은행 스트레스 테스트 결과 발표 예정",
+      "url": "https://www.federalreserve.gov/newsevents/pressreleases/bcreg20260609a.htm",
+      "eventType": "credit",
+      "riskLabelKo": "시장 리스크 · 위험회피 강화",
+      "region": "us",
+      "affectedAssets": "US Banks",
+      "direction": "risk_off",
+      "severity": 56.63,
+      "novelty": 56.63,
+      "timeHorizon": "days",
+      "scenarioLinks": [
+        "korea_domestic_financial_stress"
+      ],
+      "evidenceSpan": "미 연준 은행 스트레스 테스트 결과 발표 예정",
+      "displaySummaryKo": "미 연준 은행 스트레스 테스트 결과 발표 예정",
+      "confidence": 0.8,
+      "needsReview": true
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "manifest_version": "hedgemate_active_bundle_v1",
+  "generated_at_utc": "2026-05-28T02:31:38Z",
+  "freshness_status": "FRESH",
+  "stale_reasons": [],
+  "active_bundle": {
+    "scenario_run": "scenario-refresh-20260528",
+    "final_market_state_run": "final-refresh-20260528",
+    "hedgemate_run": "20260528T112856098541-fcc9a873",
+    "backtest_run": "backtest-20260528T112856098541-fcc9a873",
+    "data_version": "20260528",
+    "scenario_vector_as_of_date": "2026-05-27",
+    "generated_at_utc": "2026-05-28T02:31:38Z",
+    "freshness_status": "FRESH",
+    "stale_reasons": [],
+    "portfolio_input_fingerprint": {
+      "hash": "d82de6c5a5cbd67023a7c125e9ed4fe70bcec21f0a18484cbd9db9968efa9178",
+      "ticker_count": 4,
+      "total_weight_pct": 100.0,
+      "tickers": [
+        "005930.KS",
+        "035420.KS",
+        "035720.KS",
+        "NVDA"
+      ],
+      "weights": {
+        "005930.KS": 39.8798,
+        "035420.KS": 17.8418,
+        "035720.KS": 14.0444,
+        "NVDA": 28.234
+      },
+      "path": "HedgeMate/outputs/run_inputs/20260528T112856098541-fcc9a873/portfolio_weights.csv"
+    },
+    "portfolioTickers": [
+      "005930.KS",
+      "035420.KS",
+      "035720.KS",
+      "NVDA"
+    ],
+    "portfolioInputPersisted": true,
+    "portfolioInputSha256": "c675aa13581205d0d527685a4eacbc836b2406f4edf67b50dae4822901f9dbbf",
+    "recommendation_portfolio_fingerprint": {
+      "hash": "d82de6c5a5cbd67023a7c125e9ed4fe70bcec21f0a18484cbd9db9968efa9178",
+      "ticker_count": 4,
+      "total_weight_pct": 100.0,
+      "tickers": [
+        "005930.KS",
+        "035420.KS",
+        "035720.KS",
+        "NVDA"
+      ],
+      "weights": {
+        "005930.KS": 39.8798,
+        "035420.KS": 17.8418,
+        "035720.KS": 14.0444,
+        "NVDA": 28.234
+      },
+      "source_artifact": "HedgeMate/outputs/reports/portfolio_1to1_hedge_20260528T112856098541-fcc9a873_backtest_gated.csv",
+      "source_candidate": "261240.KS"
+    }
+  },
+  "active_scenario_run": "scenario-refresh-20260528",
+  "active_final_run": "final-refresh-20260528",
+  "active_hedgemate_run": "20260528T112856098541-fcc9a873",
+  "active_backtest_run": "backtest-20260528T112856098541-fcc9a873",
+  "data_version": "20260528",
+  "scenario_vector_as_of_date": "2026-05-27",
+  "portfolio_input_fingerprint": {
+    "hash": "d82de6c5a5cbd67023a7c125e9ed4fe70bcec21f0a18484cbd9db9968efa9178",
+    "ticker_count": 4,
+    "total_weight_pct": 100.0,
+    "tickers": [
+      "005930.KS",
+      "035420.KS",
+      "035720.KS",
+      "NVDA"
+    ],
+    "weights": {
+      "005930.KS": 39.8798,
+      "035420.KS": 17.8418,
+      "035720.KS": 14.0444,
+      "NVDA": 28.234
+    },
+    "path": "HedgeMate/outputs/run_inputs/20260528T112856098541-fcc9a873/portfolio_weights.csv"
+  },
+  "portfolioTickers": [
+    "005930.KS",
+    "035420.KS",
+    "035720.KS",
+    "NVDA"
+  ],
+  "portfolioInputPersisted": true,
+  "portfolioInputSha256": "c675aa13581205d0d527685a4eacbc836b2406f4edf67b50dae4822901f9dbbf",
+  "recommendation_portfolio_fingerprint": {
+    "hash": "d82de6c5a5cbd67023a7c125e9ed4fe70bcec21f0a18484cbd9db9968efa9178",
+    "ticker_count": 4,
+    "total_weight_pct": 100.0,
+    "tickers": [
+      "005930.KS",
+      "035420.KS",
+      "035720.KS",
+      "NVDA"
+    ],
+    "weights": {
+      "005930.KS": 39.8798,
+      "035420.KS": 17.8418,
+      "035720.KS": 14.0444,
+      "NVDA": 28.234
+    },
+    "source_artifact": "HedgeMate/outputs/reports/portfolio_1to1_hedge_20260528T112856098541-fcc9a873_backtest_gated.csv",
+    "source_candidate": "261240.KS"
+  },
+  "portfolio_input_mismatch": false,
+  "artifacts": {
+    "finalMarketState": "scenario_research/outputs/final/final_market_state_daily_final-refresh-20260528.csv",
+    "scenarioConfidence": "scenario_research/outputs/final/scenario_confidence_final-refresh-20260528.csv",
+    "topActiveScenarios": "scenario_research/outputs/final/top_active_scenarios_final-refresh-20260528.json",
+    "scenarioVector": "scenario_research/outputs/scenario_vectors/current_scenario_vector_scenario-refresh-20260528.csv",
+    "finalScenarioVector": "scenario_research/outputs/scenario_vectors/current_scenario_vector_final-refresh-20260528.csv",
+    "finalMetadata": "scenario_research/outputs/reports/final_market_state_metadata_final-refresh-20260528.json",
+    "eventOverlayMetadata": "scenario_research/outputs/reports/event_overlay_metadata_event-refresh-20260528.json",
+    "features": "HedgeMate/outputs/processed/features_summary_20260528T112856098541-fcc9a873.csv",
+    "portfolioInput": "HedgeMate/outputs/run_inputs/20260528T112856098541-fcc9a873/portfolio_weights.csv",
+    "assetScenarioSensitivity": "HedgeMate/outputs/processed/asset_scenario_sensitivity_20260528T112856098541-fcc9a873.csv",
+    "portfolioVulnerabilityAttribution": "HedgeMate/outputs/processed/portfolio_vulnerability_attribution_20260528T112856098541-fcc9a873.csv",
+    "portfolioVulnerabilitySummary": "HedgeMate/outputs/reports/portfolio_vulnerability_summary_20260528T112856098541-fcc9a873.json",
+    "hedgeActionCandidates": "HedgeMate/outputs/reports/hedge_action_candidates_20260528T112856098541-fcc9a873.csv",
+    "hedgeActionPlan": "HedgeMate/outputs/reports/hedge_action_plan_20260528T112856098541-fcc9a873.json",
+    "hedgeActionPlanSummary": "HedgeMate/outputs/reports/hedge_action_plan_summary_20260528T112856098541-fcc9a873.md",
+    "portfolio1to1": "HedgeMate/outputs/reports/portfolio_1to1_hedge_20260528T112856098541-fcc9a873_backtest_gated.csv",
+    "portfolioMulti": "HedgeMate/outputs/reports/portfolio_multi_hedge_20260528T112856098541-fcc9a873_backtest_gated.csv",
+    "recommendationStatusQa": "HedgeMate/outputs/reports/recommendation_status_qa_post_backtest_20260528T112856098541-fcc9a873_backtest_gated.md",
+    "backtestCsv": "HedgeMate/outputs/validation/walk_forward_backtest_backtest-20260528T112856098541-fcc9a873.csv",
+    "backtestSummary": "HedgeMate/outputs/reports/walk_forward_backtest_summary_backtest-20260528T112856098541-fcc9a873.md",
+    "backtestGateSummary": "HedgeMate/outputs/reports/backtest_gate_summary_20260528T112856098541-fcc9a873_backtest_gated.md",
+    "backtestAttributionCsv": "HedgeMate/outputs/reports/backtest_attribution_backtest-20260528T112856098541-fcc9a873.csv",
+    "backtestAttributionSummary": "HedgeMate/outputs/reports/backtest_attribution_backtest-20260528T112856098541-fcc9a873.md",
+    "formalGateAuditCsv": "HedgeMate/outputs/reports/formal_gate_audit_20260528T112856098541-fcc9a873_backtest_gated.csv",
+    "formalGateAuditSummary": "HedgeMate/outputs/reports/formal_gate_audit_20260528T112856098541-fcc9a873_backtest_gated.md",
+    "finalRunbook": "HedgeMate/outputs/reports/final_product_runbook_hedgemate-refresh-20260528.md"
+  },
+  "event_overlay_status": {
+    "mode": "reviewed_fixture",
+    "live_gemini_extraction": "implemented_api_key_required",
+    "recommendation_usage": "fixture_context_only",
+    "trade_gate_usage": "disabled_for_fixture",
+    "metadata_provider": "fixture",
+    "metadata_live_research_attached": false,
+    "metadata_schema_error_count": 0,
+    "metadata_fatal_schema_error_count": 0
+  }
+}

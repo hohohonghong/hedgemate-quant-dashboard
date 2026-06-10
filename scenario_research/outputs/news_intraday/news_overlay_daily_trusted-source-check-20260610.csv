@@ -1,0 +1,2 @@
+date,scenario_code,event_overlay_score,event_count,needs_review_count,avg_severity,avg_novelty,overlay_confidence,event_types,regions,direction_summary,top_event_titles,evidence_summary,source_count,engine_version
+2026-06-10,korea_domestic_financial_stress,59.402589,1,1,56.63,56.63,0.52,credit,us,risk_off:1,미 연준 은행 스트레스 테스트 결과 발표 예정,미 연준 은행 스트레스 테스트 결과 발표 예정,1,phase5_event_overlay_v1

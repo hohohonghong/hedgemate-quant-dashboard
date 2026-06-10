@@ -1,0 +1,11 @@
+ticker,asset_class,hedge_bucket,candidate_role,candidate_role_reason_ko,risk_bucket_match,hes_score,component_corr_improve,component_cvar_improve,component_stress_defense,component_sharpe_quality,component_liquidity_penalty,corr_sp500_60d_krw,cvar_95_1y_krw,avg_stress_ret_krw,sharpe_1y_krw_proxy,adv_60
+114800.KS,kr_etf,kr_etf,research_only,리서치 전용 후보,metadata_direct_match,0.335211,0.784911,0.216242,1.0,0.14802,0.915202,-0.095426,-0.070931,0.00689,-1.880583,607349902480.3167
+261240.KS,kr_etf,kr_etf,hedge_candidate,핵심 취약점 직접 완화 후보,usd_strength_krw_weakness,0.330674,0.387847,0.826853,0.652334,0.310213,1.0,0.101199,-0.015794,0.001181,1.190758,1950302285.583333
+055550.KS,kr_stock,kr_stock,diagnostic_only,장세 해석용 자산으로 기본 헤지 후보에서 제외,metadata_direct_match,0.328072,1.0,0.476635,0.251601,0.37232,0.981703,-0.201937,-0.047418,-0.0054,2.366819,132577137687.57205
+068270.KS,kr_stock,kr_stock,diagnostic_only,장세 해석용 자산으로 기본 헤지 후보에서 제외,metadata_direct_match,0.296607,0.841458,0.417293,0.449089,0.265254,0.984576,-0.123428,-0.052776,-0.002157,0.339394,112065041014.94322
+000660.KS,kr_stock,kr_stock,diagnostic_only,장세 해석용 자산으로 기본 헤지 후보에서 제외,metadata_direct_match,0.292483,0.357287,0.037857,0.218487,1.0,0.0,0.116333,-0.087038,-0.005944,14.252727,7141238306135.329
+132030.KS,kr_etf,kr_etf,benchmark_candidate,범용 방어 benchmark입니다,metadata_direct_match,0.272349,0.589284,0.477122,0.564843,0.284666,0.999475,0.001448,-0.047374,-0.000256,0.706988,5701084328.5
+011200.KS,kr_stock,kr_stock,diagnostic_only,장세 해석용 자산으로 기본 헤지 후보에서 제외,metadata_direct_match,0.268873,0.831041,0.438357,0.334475,0.226941,0.996085,-0.118269,-0.050874,-0.004039,-0.386103,29897702024.833332
+005930.KS,kr_stock,kr_stock,diagnostic_only,장세 해석용 자산으로 기본 헤지 후보에서 제외,metadata_direct_match,0.268388,0.343844,0.183829,0.149569,0.719352,0.008981,0.122989,-0.073857,-0.007075,8.938299,7077121651560.679
+207940.KS,kr_stock,kr_stock,diagnostic_only,장세 해석용 자산으로 기본 헤지 후보에서 제외,metadata_direct_match,0.259729,0.718124,0.42892,0.444355,0.216172,0.988859,-0.062353,-0.051726,-0.002234,-0.590036,81490753216.66667
+105560.KS,kr_stock,kr_stock,diagnostic_only,장세 해석용 자산으로 기본 헤지 후보에서 제외,metadata_direct_match,0.248638,0.77056,0.374015,0.299106,0.324364,0.97321,-0.088319,-0.056684,-0.00462,1.458715,193215012553.61093

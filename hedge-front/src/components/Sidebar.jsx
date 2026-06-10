@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, FilePlus, TrendingUp, BarChart3, Settings, LogOut, Briefcase, ChevronRight, FileBarChart2, Zap } from 'lucide-react';
+import { Activity, FilePlus, BarChart3, Settings, LogOut, Briefcase, ChevronRight, FileBarChart2, Zap } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { usePortfolios } from '../context/PortfolioContext';
 import { useUserProfile } from '../hooks/useUserProfile';
@@ -26,7 +26,6 @@ export const Sidebar = () => {
   ];
 
   const analysisItems = [
-    { icon: <TrendingUp size={18} />, label: '단일 종목 탐색', path: '/analysis' },
     { icon: <BarChart3 size={18} />, label: '종목 리스크', path: '/sensitivity' },
   ];
 

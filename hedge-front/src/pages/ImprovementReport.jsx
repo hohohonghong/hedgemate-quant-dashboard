@@ -217,13 +217,49 @@ export const ImprovementReport = () => {
     if (!detail.portfolioHashMatches) reasons.push('방금 실행한 포트폴리오 fingerprint hash와 active bundle hash가 일치하지 않습니다.');
     if (!detail.tickersMatch && !detail.fingerprintMatchVerified) reasons.push('선택 포트폴리오와 active bundle의 ticker 구성이 다릅니다.');
     if (!detail.runCompleted) reasons.push('분석 job이 completed 상태가 아닙니다.');
-    if (reportModel.freshnessStatus === 'STALE') reasons.push('실시간 데이터 확인 상태가 아직 준비되지 않았습니다.');
+    if (reportModel.freshnessStatus === 'STALE') {
+      reasons.push(
+        detail.marketDataFresh === false
+          ? '실시간 시장데이터 확인 상태가 아직 준비되지 않았습니다.'
+          : '최신 시장데이터 기준의 포트폴리오 분석 결과가 아직 준비되지 않았습니다.'
+      );
+    }
     if (!detail.artifactIntegrityOk) reasons.push('active bundle 필수 artifact가 누락되었습니다.');
     if (!['ACTION_READY', 'REVIEW_ONLY', 'STALE'].includes(reportModel.productStatus)) reasons.push(`백엔드 productStatus가 ${reportModel.productStatus || 'unknown'}입니다.`);
     return reasons;
   }, [reportModel, selectedPortfolio]);
   const previewBlocksAnalysis = Boolean(portfolioPreview && portfolioPreview.canRunAnalysis === false);
   const previewBlockReasons = portfolioPreview?.errors || [];
+  const freshness = dashboardPayload?.dataFreshness || {};
+  const marketDataConfirmedFresh = freshness.marketDataFresh === true || reportModel?.portfolioMatchDetail?.marketDataFresh === true;
+  const staleAnalysisBundle = Boolean(
+    selectedPortfolio
+    && !previewBlocksAnalysis
+    && marketDataConfirmedFresh
+    && (
+      freshness.activeBundleOlderThanMarketCache
+      || freshness.portfolioInputMismatch
+      || freshness.recommendationPortfolioMismatch
+      || reportModel?.freshnessStatus === 'STALE'
+      || reportModel?.productStatus === 'STALE'
+    )
+  );
+  const analysisCtaLabel = runState.running
+    ? '재분석 중'
+    : staleAnalysisBundle
+      ? '최신 데이터로 재분석'
+      : '포트폴리오 분석 실행';
+  const analysisRequiredBadge = previewBlocksAnalysis ? '비중 조정 필요' : staleAnalysisBundle ? '재분석 필요' : '분석 대기';
+  const analysisRequiredTitle = previewBlocksAnalysis
+    ? '단일 자산 비중이 50%를 넘어 분석을 실행할 수 없습니다'
+    : staleAnalysisBundle
+      ? '최신 데이터로 재분석이 필요합니다'
+      : '이 포트폴리오에 대한 최신 분석 결과가 없습니다';
+  const analysisRequiredMessage = previewBlocksAnalysis
+    ? '다중종목 포트폴리오는 한 종목 비중이 50%를 넘으면 정식 분석을 막습니다. 비중을 낮추거나 1종목 단일자산 분석으로 분리해 주세요.'
+    : staleAnalysisBundle
+      ? '최신 시장데이터는 반영됐지만 현재 리포트는 이전 분석 결과입니다. 최신 데이터로 재분석하세요.'
+      : '이 포트폴리오에 대한 최신 분석 결과가 없습니다. 분석을 실행해야 리포트를 볼 수 있습니다.';
   const hasSingleAssetPreviewWarning = Boolean(
     portfolioPreview?.canRunAnalysis
     && (portfolioPreview?.analysisRows || []).length === 1
@@ -276,7 +312,7 @@ export const ImprovementReport = () => {
   const runMarketDataOnlyRefresh = async ({
     signal,
     onStatus,
-    timeoutMs = 8 * 60 * 1000,
+    timeoutMs = 15 * 60 * 1000,
   } = {}) => {
     const refreshJob = await refreshMarketData({
       mode: 'market_data_only',
@@ -359,13 +395,15 @@ export const ImprovementReport = () => {
       if (signal?.aborted) return;
       const next = marketDataStatusMessage(result);
       setMarketDataAutoStatus({ running: false, ...next });
+      return result;
     } catch (error) {
-      if (signal?.aborted || error.name === 'AbortError') return;
+      if (signal?.aborted || error.name === 'AbortError') return null;
       setMarketDataAutoStatus({
         running: false,
         message: error.message || '시장데이터 자동 확인을 완료하지 못했습니다. 저장된 리포트를 먼저 불러옵니다.',
         level: 'warning',
       });
+      return null;
     }
   };
 
@@ -382,8 +420,16 @@ export const ImprovementReport = () => {
     if (selectedPortfolio) {
       const controller = new AbortController();
       (async () => {
-        await refreshMarketDataBeforeDashboard(controller.signal);
-        if (!controller.signal.aborted) {
+        const [refreshResult] = await Promise.allSettled([
+          refreshMarketDataBeforeDashboard(controller.signal),
+          loadBackendDashboard({ signal: controller.signal }),
+        ]);
+        if (
+          !controller.signal.aborted
+          && refreshResult.status === 'fulfilled'
+          && refreshResult.value?.status === 'completed'
+          && refreshResult.value?.result?.skipped !== true
+        ) {
           await loadBackendDashboard({ signal: controller.signal });
         }
       })();
@@ -744,9 +790,9 @@ export const ImprovementReport = () => {
           <Button
             variant="primary"
             onClick={handleRunAnalysis}
-            disabled={!selectedPortfolio || isLoading || runState.running || (portfolioPreview && !portfolioPreview.canRunAnalysis)}
+            disabled={!selectedPortfolio || runState.running || (portfolioPreview && !portfolioPreview.canRunAnalysis)}
           >
-            {runState.running ? <Loader2 size={14} className="spin-icon" /> : <Rocket size={14} />} {'\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uC7AC\uBD84\uC11D'}
+            {runState.running ? <Loader2 size={14} className="spin-icon" /> : <Rocket size={14} />} {analysisCtaLabel}
           </Button>
         </div>
       </div>
@@ -757,6 +803,20 @@ export const ImprovementReport = () => {
             marketDataAutoStatus.level === 'warning' ? <AlertCircle size={14} /> : <Shield size={14} />
           )}
           <span>{marketDataAutoStatus.message}</span>
+        </div>
+      )}
+
+      {staleAnalysisBundle && !runState.running && (
+        <div className="status-strip warning mt-4">
+          <AlertCircle size={14} />
+          <span>최신 시장데이터는 반영됐지만 현재 리포트는 이전 분석 결과입니다. 최신 데이터로 재분석하세요.</span>
+        </div>
+      )}
+
+      {isLoading && !runState.running && (
+        <div className="status-strip compact mt-4">
+          <Loader2 size={14} className="spin-icon" />
+          <span>최신 분석 결과를 불러오는 중입니다.</span>
         </div>
       )}
 
@@ -828,7 +888,13 @@ export const ImprovementReport = () => {
       )}
 
       {!isLoading && !runState.running && selectedPortfolio && !showMatchedResults && (
-        <section className="analysis-required-card mt-6">
+        <section className="analysis-required-card mt-6" data-analysis-state={analysisRequiredBadge}>
+          {staleAnalysisBundle && (
+            <div className="status-strip warning mt-4">
+              <AlertCircle size={14} />
+              <span><strong>{analysisRequiredTitle}</strong> {analysisRequiredMessage}</span>
+            </div>
+          )}
           <div>
             <span className="decision-badge">{previewBlocksAnalysis ? '비중 조정 필요' : '분석 대기'}</span>
             <h3>{previewBlocksAnalysis ? '단일 자산 비중이 50%를 넘어 분석을 실행할 수 없습니다' : '이 포트폴리오에 대한 최신 분석 결과가 없습니다'}</h3>

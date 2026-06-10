@@ -1,1 +1,0 @@
-import{T as t,a as i}from"./chunk-T3LMQ7RL.js";import{c as r,d as o}from"./chunk-LMDEEU6V.js";o();var p=r(i(),1);var a=r(t(),1),u=({children:n,variant:e="primary",className:d="",...b})=>(0,a.jsx)("button",{className:`btn btn-${e} ${d}`,...b,children:n});export{u as a};

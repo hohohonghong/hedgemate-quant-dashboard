@@ -1,4 +1,0 @@
-scenario,vol_annual,mdd,cvar_95,annual_return_krw,sharpe_krw_proxy,vol_improve_pct,mdd_improve_pct,cvar_improve_pct,sharpe_improve_pct,stress_improve,no_recommendation_reason
-기존 포트폴리오,0.241523,-0.470443,-0.032992,0.28602,1.060023,0.0,0.0,0.0,0.0,0.0,
-제안(1:1) - 261240.KS,0.190731,-0.365549,-0.025274,0.310533,1.470831,21.029896,22.296942,23.394967,38.754628,0.000418,
-제안(다자산) - 261240.KS + FXF,0.166801,-0.31987,-0.022141,0.279398,1.495181,30.937913,32.00667,32.890087,41.051744,0.000834,

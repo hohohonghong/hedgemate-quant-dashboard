@@ -1,0 +1,2 @@
+date,scenario_code,event_overlay_score,event_count,needs_review_count,avg_severity,avg_novelty,overlay_confidence,event_types,regions,direction_summary,top_event_titles,evidence_summary,source_count,engine_version
+2026-06-10,acute_global_stress_liquidity_crunch,33.394449,2,2,29.0,64.5,0.5525,credit|fx,asia|us,fx_pressure:1|risk_off:1,미 연준 은행 스트레스 테스트 결과 발표 | 환율 급등 및 코스피 폭락,연례 은행 스트레스 테스트 결과 발표 | 환율 1560원 치솟고 코스피 8% 폭락,2,phase5_event_overlay_v1

@@ -7,7 +7,6 @@ const namedPage = (loader, exportName) => lazy(() => loader().then((module) => (
 
 const PortfolioRegistration = namedPage(() => import('./pages/PortfolioRegistration'), 'PortfolioRegistration');
 const ImprovementReport = namedPage(() => import('./pages/ImprovementReport'), 'ImprovementReport');
-const AssetAnalysis = namedPage(() => import('./pages/AssetAnalysis'), 'AssetAnalysis');
 const AssetSensitivity = namedPage(() => import('./pages/AssetSensitivity'), 'AssetSensitivity');
 const MarketStateDashboard = namedPage(() => import('./pages/MarketStateDashboard'), 'MarketStateDashboard');
 const Settings = namedPage(() => import('./pages/Settings'), 'Settings');
@@ -27,7 +26,7 @@ function App() {
                 <Routes>
                   <Route path="/register" element={<PortfolioRegistration />} />
                   <Route path="/report" element={<ImprovementReport />} />
-                  <Route path="/analysis" element={<AssetAnalysis />} />
+                  <Route path="/analysis" element={<Navigate to="/report" replace />} />
                   <Route path="/sensitivity" element={<AssetSensitivity />} />
                   <Route path="/market-state" element={<MarketStateDashboard />} />
                   <Route path="/strategy" element={<Navigate to="/report" replace />} />

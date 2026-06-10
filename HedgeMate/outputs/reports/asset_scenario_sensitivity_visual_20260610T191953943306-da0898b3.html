@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>HedgeMate Scenario Sensitivity Visual - 20260610T191953943306-da0898b3</title>
+<style>
+  :root {
+    --ink: #111827;
+    --muted: #64748b;
+    --line: #d8dee9;
+    --panel: #ffffff;
+    --bg: #f5f1e8;
+  }
+  body {
+    margin: 0;
+    padding: 28px;
+    background: radial-gradient(circle at top left, #fff7d6, transparent 32rem), var(--bg);
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+  }
+  h1, h2, h3 { margin: 0 0 10px; }
+  h1 { font-size: 30px; letter-spacing: -0.03em; }
+  h2 { font-size: 19px; }
+  h3 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .muted { color: var(--muted); }
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+    margin: 18px 0 22px;
+  }
+  .metric, .card {
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  }
+  .metric { padding: 16px; }
+  .metric strong { display: block; font-size: 28px; }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .card { padding: 18px; }
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  ol { margin: 0; padding-left: 22px; }
+  li { margin: 6px 0; }
+  li span { color: var(--muted); }
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+    border-radius: 18px;
+    background: white;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    margin-top: 18px;
+  }
+  th, td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { background: #111827; color: white; font-weight: 600; }
+  tbody th { font-weight: 700; }
+  .heat { font-variant-numeric: tabular-nums; }
+  .gate { outline: 2px solid rgba(17, 24, 39, 0.45); outline-offset: -3px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 4px; color: var(--muted); }
+  .swatch { display: inline-block; width: 18px; height: 10px; border-radius: 999px; margin-right: 6px; }
+  .badges { display: flex; justify-content: flex-end; gap: 4px; margin-top: 5px; }
+  .badge { display: inline-block; border-radius: 999px; padding: 2px 6px; font-size: 10px; letter-spacing: .06em; }
+  .badge.active { background: #fde68a; color: #78350f; }
+  .badge.adverse { background: #fecaca; color: #7f1d1d; }
+  .badge.tradegate { background: #bbf7d0; color: #14532d; }
+  .details { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 0 0 20px; }
+  .detail { background: rgba(255,255,255,.7); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .section-title { margin-top: 24px; }
+</style>
+</head>
+<body>
+  <h1>Scenario Sensitivity Visual</h1>
+  <p class="muted">run_id 20260610T191953943306-da0898b3 · data_version 20260610 · positive는 취약도 증가, negative는 방어/상쇄 가능성을 뜻합니다.</p>
+  <div class="summary">
+    <div class="metric"><span class="muted">Total scenarios</span><strong>10</strong></div>
+    <div class="metric"><span class="muted">Active scenarios</span><strong>7</strong></div>
+    <div class="metric"><span class="muted">Adverse scenarios</span><strong>9</strong></div>
+    <div class="metric"><span class="muted">Gate eligible rows</span><strong>600</strong></div>
+    <div class="metric"><span class="muted">High evidence rows</span><strong>1050</strong></div>
+  </div>
+  <div class="details">
+    <div class="detail"><strong>Evidence quality</strong><br><span class="muted">high 1050, medium 450</span></div>
+    <div class="detail"><strong>Method</strong><br><span class="muted">rolling_beta 1500</span></div>
+  </div>
+  <div class="legend">
+    <span><i class="swatch" style="background:rgba(185,28,28,.65)"></i>취약도 높음</span>
+    <span><i class="swatch" style="background:rgba(37,99,235,.65)"></i>방어/상쇄</span>
+    <span><i class="swatch" style="background:#f8fafc;border:1px solid #cbd5e1"></i>중립</span>
+    <span>굵은 테두리: gate_eligible=Y</span>
+  </div>
+  <h2 class="section-title">All scenario heatmap</h2>
+  <p class="muted">전체 10개 시나리오를 모두 표시합니다. ACTIVE/ADVERSE 배지는 현재 장세와 게이트 해석 우선순위를 구분합니다.</p>
+  <table>
+    <thead><tr><th>Ticker</th><th>Class</th><th title='usd_strength_krw_weakness'><span>달러강세/원화약세장</span><div class='badges'><span class='badge active'>ACTIVE</span><span class='badge adverse'>ADVERSE</span></div></th><th title='china_trade_fragmentation_shock'><span>중국·무역분절 충격장</span><div class='badges'><span class='badge active'>ACTIVE</span><span class='badge adverse'>ADVERSE</span></div></th><th title='acute_global_stress_liquidity_crunch'><span>급성 리스크오프/유동성 경색장</span><div class='badges'><span class='badge active'>ACTIVE</span><span class='badge adverse'>ADVERSE</span></div></th><th title='higher_for_longer_long_rate_shock'><span>장기금리 부담장</span><div class='badges'><span class='badge active'>ACTIVE</span><span class='badge adverse'>ADVERSE</span></div></th><th title='semiconductor_ai_cycle_shock'><span>AI·반도체 사이클 충격장</span><div class='badges'><span class='badge active'>ACTIVE</span><span class='badge adverse'>ADVERSE</span></div></th><th title='korea_domestic_financial_stress'><span>한국 내수 금융스트레스장</span><div class='badges'><span class='badge active'>ACTIVE</span><span class='badge adverse'>ADVERSE</span></div></th><th title='geopolitical_escalation_supply_shock'><span>지정학 확전·공급충격장</span><div class='badges'><span class='badge active'>ACTIVE</span><span class='badge adverse'>ADVERSE</span></div></th><th title='slowdown_recession_deflation_risk'><span>경기둔화/침체 우려장</span><div class='badges'><span class='badge adverse'>ADVERSE</span></div></th><th title='stagflation_reinflation_energy_shock'><span>물가·에너지 재상승장</span><div class='badges'><span class='badge adverse'>ADVERSE</span></div></th><th title='soft_landing_goldilocks'><span>우호적 위험선호장</span><div class='badges'></div></th></tr></thead>
+    <tbody><tr><th>NVDA</th><td>us_stock</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.23);color:#111827;'>0.124</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.44);color:#111827;'>0.624</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.61);color:#111827;'>1.033</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.643</td><td class='heat' style='background:rgba(185, 28, 28, 0.65);color:#111827;'>1.137</td><td class='heat' style='background:rgba(37, 99, 235, 0.35);color:#111827;'>-0.417</td><td class='heat' style='background:rgba(185, 28, 28, 0.31);color:#111827;'>0.321</td><td class='heat' style='background:rgba(185, 28, 28, 0.54);color:#111827;'>0.875</td><td class='heat' style='background:rgba(185, 28, 28, 0.53);color:#111827;'>0.858</td><td class='heat' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.896</td></tr><tr><th>AMD</th><td>us_stock</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.23);color:#111827;'>0.115</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.49);color:#111827;'>0.756</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.70);color:#111827;'>1.264</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.623</td><td class='heat' style='background:rgba(185, 28, 28, 0.69);color:#111827;'>1.231</td><td class='heat' style='background:rgba(37, 99, 235, 0.29);color:#111827;'>-0.272</td><td class='heat' style='background:rgba(185, 28, 28, 0.36);color:#111827;'>0.432</td><td class='heat' style='background:rgba(185, 28, 28, 0.61);color:#111827;'>1.047</td><td class='heat' style='background:rgba(185, 28, 28, 0.59);color:#111827;'>0.985</td><td class='heat' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.86</td></tr><tr><th>TSLA</th><td>us_stock</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.22);color:#111827;'>0.095</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.31);color:#111827;'>0.323</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.51);color:#111827;'>0.801</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.73);color:#111827;'>1.329</td><td class='heat' style='background:rgba(185, 28, 28, 0.46);color:#111827;'>0.68</td><td class='heat' style='background:rgba(37, 99, 235, 0.33);color:#111827;'>-0.37</td><td class='heat' style='background:rgba(185, 28, 28, 0.33);color:#111827;'>0.369</td><td class='heat' style='background:rgba(185, 28, 28, 0.55);color:#111827;'>0.902</td><td class='heat' style='background:rgba(185, 28, 28, 0.55);color:#111827;'>0.891</td><td class='heat' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.781</td></tr><tr><th>LRCX</th><td>us_stock</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.21);color:#111827;'>0.08</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.46);color:#111827;'>0.68</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.63);color:#111827;'>1.1</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.545</td><td class='heat' style='background:rgba(185, 28, 28, 0.66);color:#111827;'>1.16</td><td class='heat' style='background:rgba(37, 99, 235, 0.31);color:#111827;'>-0.322</td><td class='heat' style='background:rgba(185, 28, 28, 0.32);color:#111827;'>0.34</td><td class='heat' style='background:rgba(185, 28, 28, 0.55);color:#111827;'>0.887</td><td class='heat' style='background:rgba(185, 28, 28, 0.55);color:#111827;'>0.887</td><td class='heat' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.719</td></tr><tr><th>MU</th><td>us_stock</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.21);color:#111827;'>0.067</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.43);color:#111827;'>0.595</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.44);color:#111827;'>0.639</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.62);color:#111827;'>1.067</td><td class='heat' style='background:rgba(185, 28, 28, 0.66);color:#111827;'>1.154</td><td class='heat' style='background:rgba(37, 99, 235, 0.31);color:#111827;'>-0.309</td><td class='heat' style='background:rgba(185, 28, 28, 0.28);color:#111827;'>0.252</td><td class='heat' style='background:rgba(185, 28, 28, 0.49);color:#111827;'>0.751</td><td class='heat' style='background:rgba(185, 28, 28, 0.43);color:#111827;'>0.596</td><td class='heat' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.667</td></tr><tr><th>AMAT</th><td>us_stock</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.20);color:#111827;'>0.058</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.42);color:#111827;'>0.585</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.56);color:#111827;'>0.914</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.498</td><td class='heat' style='background:rgba(185, 28, 28, 0.62);color:#111827;'>1.069</td><td class='heat' style='background:rgba(37, 99, 235, 0.35);color:#111827;'>-0.407</td><td class='heat' style='background:rgba(185, 28, 28, 0.28);color:#111827;'>0.236</td><td class='heat' style='background:rgba(185, 28, 28, 0.48);color:#111827;'>0.724</td><td class='heat' style='background:rgba(185, 28, 28, 0.50);color:#111827;'>0.78</td><td class='heat' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.633</td></tr><tr><th>SOL-USD</th><td>crypto</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.20);color:#111827;'>0.056</td><td class='heat gate' style='background:rgba(37, 99, 235, 0.21);color:#111827;'>-0.069</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.21);color:#111827;'>0.064</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.69);color:#111827;'>1.243</td><td class='heat' style='background:rgba(185, 28, 28, 0.29);color:#111827;'>0.266</td><td class='heat' style='background:rgba(37, 99, 235, 0.48);color:#111827;'>-0.728</td><td class='heat' style='background:#f8fafc;color:#475569;'>-0.044</td><td class='heat' style='background:rgba(185, 28, 28, 0.30);color:#111827;'>0.294</td><td class='heat' style='background:rgba(185, 28, 28, 0.38);color:#111827;'>0.474</td><td class='heat' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.624</td></tr><tr><th>SMH</th><td>equity_etf</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>0.039</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.42);color:#111827;'>0.574</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.54);color:#111827;'>0.88</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.60);color:#111827;'>1.005</td><td class='heat' style='background:rgba(185, 28, 28, 0.70);color:#111827;'>1.25</td><td class='heat' style='background:rgba(37, 99, 235, 0.22);color:#111827;'>-0.092</td><td class='heat' style='background:rgba(185, 28, 28, 0.38);color:#111827;'>0.476</td><td class='heat' style='background:rgba(185, 28, 28, 0.61);color:#111827;'>1.03</td><td class='heat' style='background:rgba(185, 28, 28, 0.41);color:#111827;'>0.558</td><td class='heat' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.555</td></tr><tr><th>ASML</th><td>us_stock</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>0.037</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.42);color:#111827;'>0.578</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.55);color:#111827;'>0.885</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.59);color:#111827;'>1.002</td><td class='heat' style='background:rgba(185, 28, 28, 0.70);color:#111827;'>1.254</td><td class='heat' style='background:rgba(37, 99, 235, 0.23);color:#111827;'>-0.112</td><td class='heat' style='background:rgba(185, 28, 28, 0.22);color:#111827;'>0.109</td><td class='heat' style='background:rgba(185, 28, 28, 0.61);color:#111827;'>1.032</td><td class='heat' style='background:rgba(185, 28, 28, 0.23);color:#111827;'>0.11</td><td class='heat' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.549</td></tr><tr><th>AVGO</th><td>us_stock</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>0.033</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.40);color:#111827;'>0.525</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.50);color:#111827;'>0.786</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.78);color:#111827;'>1.442</td><td class='heat' style='background:rgba(185, 28, 28, 0.57);color:#111827;'>0.951</td><td class='heat' style='background:rgba(37, 99, 235, 0.36);color:#111827;'>-0.433</td><td class='heat' style='background:rgba(185, 28, 28, 0.26);color:#111827;'>0.193</td><td class='heat' style='background:rgba(185, 28, 28, 0.43);color:#111827;'>0.601</td><td class='heat' style='background:rgba(185, 28, 28, 0.47);color:#111827;'>0.705</td><td class='heat' style='background:rgba(185, 28, 28, 0.80);color:#111827;'>1.531</td></tr><tr><th>META</th><td>us_stock</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>0.016</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.29);color:#111827;'>0.258</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.44);color:#111827;'>0.622</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.66);color:#111827;'>1.156</td><td class='heat' style='background:rgba(185, 28, 28, 0.38);color:#111827;'>0.495</td><td class='heat' style='background:rgba(37, 99, 235, 0.32);color:#111827;'>-0.348</td><td class='heat' style='background:rgba(185, 28, 28, 0.29);color:#111827;'>0.276</td><td class='heat' style='background:rgba(185, 28, 28, 0.47);color:#111827;'>0.693</td><td class='heat' style='background:rgba(185, 28, 28, 0.50);color:#111827;'>0.778</td><td class='heat' style='background:rgba(185, 28, 28, 0.79);color:#111827;'>1.466</td></tr><tr><th>ETH-USD</th><td>crypto</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>0.014</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>0.042</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.28);color:#111827;'>0.232</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.66);color:#111827;'>1.15</td><td class='heat' style='background:rgba(185, 28, 28, 0.29);color:#111827;'>0.267</td><td class='heat' style='background:rgba(37, 99, 235, 0.42);color:#111827;'>-0.569</td><td class='heat' style='background:#f8fafc;color:#475569;'>0.039</td><td class='heat' style='background:rgba(185, 28, 28, 0.34);color:#111827;'>0.387</td><td class='heat' style='background:rgba(185, 28, 28, 0.41);color:#111827;'>0.56</td><td class='heat' style='background:rgba(185, 28, 28, 0.78);color:#111827;'>1.455</td></tr><tr><th>QCOM</th><td>us_stock</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>0.005</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.39);color:#111827;'>0.52</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.49);color:#111827;'>0.755</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.57);color:#111827;'>0.932</td><td class='heat' style='background:rgba(185, 28, 28, 0.66);color:#111827;'>1.151</td><td class='heat' style='background:rgba(37, 99, 235, 0.24);color:#111827;'>-0.136</td><td class='heat' style='background:rgba(185, 28, 28, 0.20);color:#111827;'>0.053</td><td class='heat' style='background:rgba(185, 28, 28, 0.55);color:#111827;'>0.903</td><td class='heat' style='background:#f8fafc;color:#475569;'>0.033</td><td class='heat' style='background:rgba(185, 28, 28, 0.77);color:#111827;'>1.421</td></tr><tr><th>INTC</th><td>us_stock</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>0.001</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.41);color:#111827;'>0.563</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.40);color:#111827;'>0.53</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.56);color:#111827;'>0.923</td><td class='heat' style='background:rgba(185, 28, 28, 0.55);color:#111827;'>0.905</td><td class='heat' style='background:rgba(37, 99, 235, 0.33);color:#111827;'>-0.365</td><td class='heat' style='background:rgba(185, 28, 28, 0.26);color:#111827;'>0.199</td><td class='heat' style='background:rgba(185, 28, 28, 0.43);color:#111827;'>0.608</td><td class='heat' style='background:rgba(185, 28, 28, 0.40);color:#111827;'>0.524</td><td class='heat' style='background:rgba(185, 28, 28, 0.76);color:#111827;'>1.406</td></tr><tr><th>AMZN</th><td>us_stock</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>-0.0</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.24);color:#111827;'>0.151</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.35);color:#111827;'>0.417</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.64);color:#111827;'>1.119</td><td class='heat' style='background:rgba(185, 28, 28, 0.36);color:#111827;'>0.436</td><td class='heat' style='background:rgba(37, 99, 235, 0.36);color:#111827;'>-0.435</td><td class='heat' style='background:rgba(185, 28, 28, 0.25);color:#111827;'>0.168</td><td class='heat' style='background:rgba(185, 28, 28, 0.39);color:#111827;'>0.519</td><td class='heat' style='background:rgba(185, 28, 28, 0.45);color:#111827;'>0.661</td><td class='heat' style='background:rgba(185, 28, 28, 0.76);color:#111827;'>1.399</td></tr><tr><th>XLK</th><td>equity_etf</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>-0.028</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.38);color:#111827;'>0.495</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.46);color:#111827;'>0.686</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.72);color:#111827;'>1.308</td><td class='heat' style='background:rgba(185, 28, 28, 0.49);color:#111827;'>0.748</td><td class='heat' style='background:rgba(37, 99, 235, 0.35);color:#111827;'>-0.418</td><td class='heat' style='background:rgba(185, 28, 28, 0.24);color:#111827;'>0.138</td><td class='heat' style='background:rgba(185, 28, 28, 0.37);color:#111827;'>0.47</td><td class='heat' style='background:rgba(185, 28, 28, 0.44);color:#111827;'>0.639</td><td class='heat' style='background:rgba(185, 28, 28, 0.71);color:#111827;'>1.288</td></tr><tr><th>000660.KS</th><td>kr_stock</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.46);color:#111827;'>0.683</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.59);color:#111827;'>0.985</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.29);color:#111827;'>0.267</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.28);color:#111827;'>0.25</td><td class='heat' style='background:rgba(185, 28, 28, 0.59);color:#111827;'>0.989</td><td class='heat' style='background:rgba(185, 28, 28, 0.71);color:#111827;'>1.28</td><td class='heat' style='background:rgba(185, 28, 28, 0.32);color:#111827;'>0.349</td><td class='heat' style='background:rgba(185, 28, 28, 0.27);color:#111827;'>0.208</td><td class='heat' style='background:rgba(185, 28, 28, 0.24);color:#111827;'>0.149</td><td class='heat' style='background:#f8fafc;color:#475569;'>-0.0</td></tr><tr><th>QQQ</th><td>equity_etf</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>-0.05</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.38);color:#111827;'>0.485</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.45);color:#111827;'>0.651</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.70);color:#111827;'>1.261</td><td class='heat' style='background:rgba(185, 28, 28, 0.46);color:#111827;'>0.685</td><td class='heat' style='background:rgba(37, 99, 235, 0.35);color:#111827;'>-0.417</td><td class='heat' style='background:rgba(185, 28, 28, 0.23);color:#111827;'>0.12</td><td class='heat' style='background:rgba(185, 28, 28, 0.35);color:#111827;'>0.423</td><td class='heat' style='background:rgba(185, 28, 28, 0.43);color:#111827;'>0.615</td><td class='heat' style='background:rgba(185, 28, 28, 0.68);color:#111827;'>1.201</td></tr><tr><th>TSM</th><td>us_stock</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>-0.035</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.41);color:#111827;'>0.548</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.50);color:#111827;'>0.775</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.53);color:#111827;'>0.842</td><td class='heat' style='background:rgba(185, 28, 28, 0.65);color:#111827;'>1.144</td><td class='heat' style='background:#f8fafc;color:#475569;'>-0.029</td><td class='heat' style='background:rgba(185, 28, 28, 0.20);color:#111827;'>0.053</td><td class='heat' style='background:rgba(185, 28, 28, 0.54);color:#111827;'>0.882</td><td class='heat' style='background:#f8fafc;color:#475569;'>0.036</td><td class='heat' style='background:rgba(185, 28, 28, 0.70);color:#111827;'>1.259</td></tr><tr><th>VUG</th><td>equity_etf</td><td class='heat gate' style='background:rgba(37, 99, 235, 0.20);color:#111827;'>-0.051</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.38);color:#111827;'>0.472</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.44);color:#111827;'>0.627</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.70);color:#111827;'>1.259</td><td class='heat' style='background:rgba(185, 28, 28, 0.45);color:#111827;'>0.66</td><td class='heat' style='background:rgba(37, 99, 235, 0.36);color:#111827;'>-0.428</td><td class='heat' style='background:rgba(185, 28, 28, 0.23);color:#111827;'>0.109</td><td class='heat' style='background:rgba(185, 28, 28, 0.35);color:#111827;'>0.404</td><td class='heat' style='background:rgba(185, 28, 28, 0.43);color:#111827;'>0.602</td><td class='heat' style='background:rgba(185, 28, 28, 0.67);color:#111827;'>1.197</td></tr><tr><th>IWF</th><td>equity_etf</td><td class='heat gate' style='background:rgba(37, 99, 235, 0.20);color:#111827;'>-0.058</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.37);color:#111827;'>0.469</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.43);color:#111827;'>0.615</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.69);color:#111827;'>1.243</td><td class='heat' style='background:rgba(185, 28, 28, 0.45);color:#111827;'>0.647</td><td class='heat' style='background:rgba(37, 99, 235, 0.36);color:#111827;'>-0.425</td><td class='heat' style='background:rgba(185, 28, 28, 0.22);color:#111827;'>0.105</td><td class='heat' style='background:rgba(185, 28, 28, 0.34);color:#111827;'>0.388</td><td class='heat' style='background:rgba(185, 28, 28, 0.43);color:#111827;'>0.594</td><td class='heat' style='background:rgba(185, 28, 28, 0.66);color:#111827;'>1.169</td></tr><tr><th>CRM</th><td>us_stock</td><td class='heat gate' style='background:#f8fafc;color:#475569;'>-0.043</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.22);color:#111827;'>0.098</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.30);color:#111827;'>0.29</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.60);color:#111827;'>1.026</td><td class='heat' style='background:rgba(185, 28, 28, 0.31);color:#111827;'>0.306</td><td class='heat' style='background:rgba(37, 99, 235, 0.37);color:#111827;'>-0.448</td><td class='heat' style='background:rgba(185, 28, 28, 0.23);color:#111827;'>0.109</td><td class='heat' style='background:rgba(185, 28, 28, 0.34);color:#111827;'>0.382</td><td class='heat' style='background:rgba(185, 28, 28, 0.42);color:#111827;'>0.582</td><td class='heat' style='background:rgba(185, 28, 28, 0.69);color:#111827;'>1.229</td></tr><tr><th>005930.KS</th><td>kr_stock</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.46);color:#111827;'>0.686</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.60);color:#111827;'>1.015</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.31);color:#111827;'>0.318</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.28);color:#111827;'>0.25</td><td class='heat' style='background:rgba(185, 28, 28, 0.55);color:#111827;'>0.898</td><td class='heat' style='background:rgba(185, 28, 28, 0.67);color:#111827;'>1.19</td><td class='heat' style='background:rgba(185, 28, 28, 0.33);color:#111827;'>0.371</td><td class='heat' style='background:rgba(185, 28, 28, 0.27);color:#111827;'>0.22</td><td class='heat' style='background:rgba(185, 28, 28, 0.25);color:#111827;'>0.177</td><td class='heat' style='background:#f8fafc;color:#475569;'>-0.043</td></tr><tr><th>AAPL</th><td>us_stock</td><td class='heat gate' style='background:rgba(37, 99, 235, 0.20);color:#111827;'>-0.054</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.23);color:#111827;'>0.128</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.32);color:#111827;'>0.335</td><td class='heat gate' style='background:rgba(185, 28, 28, 0.59);color:#111827;'>1.0</td><td class='heat' style='background:rgba(185, 28, 28, 0.31);color:#111827;'>0.318</td><td class='heat' style='background:rgba(37, 99, 235, 0.35);color:#111827;'>-0.407</td><td class='heat' style='background:rgba(185, 28, 28, 0.23);color:#111827;'>0.132</td><td class='heat' style='background:rgba(185, 28, 28, 0.35);color:#111827;'>0.407</td><td class='heat' style='background:rgba(185, 28, 28, 0.43);color:#111827;'>0.605</td><td class='heat' style='background:rgba(185, 28, 28, 0.67);color:#111827;'>1.182</td></tr></tbody>
+  </table>
+  <h2 class="section-title">Active scenario focus</h2>
+  <div class="cards">
+            <section class="card">
+              <h2>달러강세/원화약세장</h2>
+              <p class="muted">usd_strength_krw_weakness · lens fx_krw</p>
+              <div class="split">
+                <div><h3>취약도 상위</h3><ol><li><strong>069500.KS</strong> <span>0.7</span></li><li><strong>005930.KS</strong> <span>0.686</span></li><li><strong>000660.KS</strong> <span>0.683</span></li><li><strong>000270.KS</strong> <span>0.645</span></li><li><strong>005380.KS</strong> <span>0.64</span></li></ol></div>
+                <div><h3>방어/상쇄 상위</h3><ol><li><strong>BTAL</strong> <span>-0.35</span></li><li><strong>PSQ</strong> <span>-0.35</span></li><li><strong>SH</strong> <span>-0.35</span></li><li><strong>TAIL</strong> <span>-0.35</span></li><li><strong>FXY</strong> <span>-0.319</span></li></ol></div>
+              </div>
+            </section>
+            
+            <section class="card">
+              <h2>중국·무역분절 충격장</h2>
+              <p class="muted">china_trade_fragmentation_shock · lens china_asia</p>
+              <div class="split">
+                <div><h3>취약도 상위</h3><ol><li><strong>005930.KS</strong> <span>1.015</span></li><li><strong>000660.KS</strong> <span>0.985</span></li><li><strong>EWY</strong> <span>0.877</span></li><li><strong>AMD</strong> <span>0.756</span></li><li><strong>LRCX</strong> <span>0.68</span></li></ol></div>
+                <div><h3>방어/상쇄 상위</h3><ol><li><strong>TAIL</strong> <span>-0.11</span></li><li><strong>BNB-USD</strong> <span>-0.105</span></li><li><strong>LLY</strong> <span>-0.091</span></li><li><strong>SGOV</strong> <span>-0.069</span></li><li><strong>BIL</strong> <span>-0.069</span></li></ol></div>
+              </div>
+            </section>
+            
+            <section class="card">
+              <h2>급성 리스크오프/유동성 경색장</h2>
+              <p class="muted">acute_global_stress_liquidity_crunch · lens us_global</p>
+              <div class="split">
+                <div><h3>취약도 상위</h3><ol><li><strong>AMD</strong> <span>1.264</span></li><li><strong>LRCX</strong> <span>1.1</span></li><li><strong>NVDA</strong> <span>1.033</span></li><li><strong>AMAT</strong> <span>0.914</span></li><li><strong>ASML</strong> <span>0.885</span></li></ol></div>
+                <div><h3>방어/상쇄 상위</h3><ol><li><strong>114800.KS</strong> <span>-0.585</span></li><li><strong>PSQ</strong> <span>-0.332</span></li><li><strong>SH</strong> <span>-0.325</span></li><li><strong>TAIL</strong> <span>-0.317</span></li><li><strong>BTAL</strong> <span>-0.267</span></li></ol></div>
+              </div>
+            </section>
+            
+            <section class="card">
+              <h2>장기금리 부담장</h2>
+              <p class="muted">higher_for_longer_long_rate_shock · lens us_global</p>
+              <div class="split">
+                <div><h3>취약도 상위</h3><ol><li><strong>NVDA</strong> <span>1.643</span></li><li><strong>AMD</strong> <span>1.623</span></li><li><strong>LRCX</strong> <span>1.545</span></li><li><strong>AMAT</strong> <span>1.498</span></li><li><strong>AVGO</strong> <span>1.442</span></li></ol></div>
+                <div><h3>방어/상쇄 상위</h3><ol><li><strong>FXY</strong> <span>-0.031</span></li><li><strong>FXF</strong> <span>-0.0</span></li><li><strong>000270.KS</strong> <span>0.0</span></li><li><strong>005380.KS</strong> <span>0.0</span></li><li><strong>005490.KS</strong> <span>0.0</span></li></ol></div>
+              </div>
+            </section>
+            
+            <section class="card">
+              <h2>AI·반도체 사이클 충격장</h2>
+              <p class="muted">semiconductor_ai_cycle_shock · lens korea_semiconductor</p>
+              <div class="split">
+                <div><h3>취약도 상위</h3><ol><li><strong>ASML</strong> <span>1.254</span></li><li><strong>SMH</strong> <span>1.25</span></li><li><strong>AMD</strong> <span>1.231</span></li><li><strong>LRCX</strong> <span>1.16</span></li><li><strong>MU</strong> <span>1.154</span></li></ol></div>
+                <div><h3>방어/상쇄 상위</h3><ol><li><strong>TAIL</strong> <span>-0.304</span></li><li><strong>VGIT</strong> <span>-0.267</span></li><li><strong>GOVT</strong> <span>-0.266</span></li><li><strong>IEF</strong> <span>-0.266</span></li><li><strong>VGSH</strong> <span>-0.266</span></li></ol></div>
+              </div>
+            </section>
+            
+            <section class="card">
+              <h2>한국 내수 금융스트레스장</h2>
+              <p class="muted">korea_domestic_financial_stress · lens korea_market</p>
+              <div class="split">
+                <div><h3>취약도 상위</h3><ol><li><strong>000660.KS</strong> <span>1.28</span></li><li><strong>005930.KS</strong> <span>1.19</span></li><li><strong>034020.KS</strong> <span>1.156</span></li><li><strong>066570.KS</strong> <span>1.138</span></li><li><strong>069500.KS</strong> <span>1.132</span></li></ol></div>
+                <div><h3>방어/상쇄 상위</h3><ol><li><strong>SOL-USD</strong> <span>-0.728</span></li><li><strong>BNB-USD</strong> <span>-0.598</span></li><li><strong>BTC-USD</strong> <span>-0.569</span></li><li><strong>ETH-USD</strong> <span>-0.569</span></li><li><strong>NFLX</strong> <span>-0.567</span></li></ol></div>
+              </div>
+            </section>
+            
+            <section class="card">
+              <h2>지정학 확전·공급충격장</h2>
+              <p class="muted">geopolitical_escalation_supply_shock · lens geopolitical</p>
+              <div class="split">
+                <div><h3>취약도 상위</h3><ol><li><strong>EWY</strong> <span>0.486</span></li><li><strong>SMH</strong> <span>0.476</span></li><li><strong>AMD</strong> <span>0.432</span></li><li><strong>005930.KS</strong> <span>0.371</span></li><li><strong>TSLA</strong> <span>0.369</span></li></ol></div>
+                <div><h3>방어/상쇄 상위</h3><ol><li><strong>GLD</strong> <span>-0.64</span></li><li><strong>IAU</strong> <span>-0.639</span></li><li><strong>TAIL</strong> <span>-0.567</span></li><li><strong>TIP</strong> <span>-0.507</span></li><li><strong>ICLN</strong> <span>-0.421</span></li></ol></div>
+              </div>
+            </section>
+            </div>
+</body>
+</html>
