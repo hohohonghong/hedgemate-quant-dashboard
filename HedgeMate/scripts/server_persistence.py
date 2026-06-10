@@ -66,6 +66,7 @@ class PersistenceStore:
         explicit_sqlite = sqlite_path if sqlite_path is not None else os.environ.get("HEDGEMATE_DB_PATH")
         self.sqlite_path = Path(explicit_sqlite) if explicit_sqlite else DEFAULT_SQLITE_PATH
         self.kind = self._detect_kind(self.database_url)
+        self.fallback_reason = None
         self._initialized = False
         self._lock = threading.RLock()
 
@@ -125,7 +126,15 @@ class PersistenceStore:
         with self._lock:
             if self._initialized:
                 return
-            conn = self._connect()
+            try:
+                conn = self._connect()
+            except Exception as exc:
+                if self.kind != "mysql" or os.environ.get("HEDGEMATE_DB_STRICT", "").strip().lower() in {"1", "true", "yes", "on"}:
+                    raise
+                self.fallback_reason = str(exc)
+                self.database_url = None
+                self.kind = "sqlite"
+                conn = self._connect()
             try:
                 for statement in self._schema_statements():
                     conn.execute(self._sql(statement)) if self.kind == "sqlite" else conn.cursor().execute(self._sql(statement))
@@ -344,7 +353,10 @@ class PersistenceStore:
                 cursor.fetchone()
             finally:
                 conn.close()
-            return {"ok": True, "kind": self.kind, "database": self.safe_database_label}
+            payload = {"ok": True, "kind": self.kind, "database": self.safe_database_label}
+            if self.fallback_reason:
+                payload["fallbackReason"] = self.fallback_reason
+            return payload
         except Exception as exc:
             return {"ok": False, "kind": self.kind, "database": self.safe_database_label, "error": str(exc)}
 
