@@ -1,0 +1,102 @@
+{
+  "run_id": "event-refresh-20260605",
+  "input": "scenario_research\\inputs\\event_overlay_sample_combined_20260514.csv",
+  "pipeline_phase": "phase5_structured_overlay",
+  "input_mode": "reviewed_local_fixture",
+  "provider": "fixture",
+  "provider_requires_api_key": false,
+  "provider_api_key_env": null,
+  "provider_model": null,
+  "extraction_schema_version": "phase5_event_extraction_schema_v1",
+  "provider_event_schema": {
+    "schema_version": "phase5_event_extraction_schema_v1",
+    "required_for_aggregation": [
+      "date",
+      "title",
+      "evidence_span",
+      "scenario_links"
+    ],
+    "reviewable_if_missing": [
+      "evidence_span",
+      "scenario_links"
+    ],
+    "numeric_0_to_100": [
+      "severity",
+      "novelty",
+      "extract_confidence"
+    ],
+    "enums": {
+      "event_type": [
+        "commodity",
+        "credit",
+        "earnings",
+        "fx",
+        "geopolitics",
+        "growth",
+        "inflation",
+        "policy",
+        "rate",
+        "risk_sentiment",
+        "semiconductor",
+        "trade"
+      ],
+      "region": [
+        "asia",
+        "china",
+        "europe",
+        "global",
+        "korea",
+        "us"
+      ],
+      "direction": [
+        "fx_pressure",
+        "fx_relief",
+        "growth_down",
+        "growth_up",
+        "inflation_down",
+        "inflation_up",
+        "policy_support",
+        "policy_tightening",
+        "rate_down",
+        "rate_up",
+        "risk_off",
+        "risk_on",
+        "semiconductor_down",
+        "semiconductor_up",
+        "trade_pressure"
+      ],
+      "time_horizon": [
+        "days",
+        "intraday",
+        "months",
+        "weeks"
+      ],
+      "scenario_links": [
+        "acute_global_stress_liquidity_crunch",
+        "china_trade_fragmentation_shock",
+        "geopolitical_escalation_supply_shock",
+        "higher_for_longer_long_rate_shock",
+        "korea_domestic_financial_stress",
+        "semiconductor_ai_cycle_shock",
+        "slowdown_recession_deflation_risk",
+        "soft_landing_goldilocks",
+        "stagflation_reinflation_energy_shock",
+        "usd_strength_krw_weakness"
+      ]
+    }
+  },
+  "strict_schema": false,
+  "schema_error_count": 0,
+  "fatal_schema_error_count": 0,
+  "schema_errors_sample": [],
+  "live_research_attached": false,
+  "phase6_final_merge_ready": false,
+  "phase6_gap": "structured_and_unstructured_not_merged",
+  "article_event_count": 10,
+  "daily_overlay_count": 10,
+  "needs_review_count": 0,
+  "article_path": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\events\\event_overlay_article_event-refresh-20260605.csv",
+  "daily_path": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\events\\event_overlay_daily_event-refresh-20260605.csv",
+  "review_path": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\reports\\event_overlay_review_event-refresh-20260605.md",
+  "dashboard_path": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\reports\\phase5_event_overlay_dashboard_event-refresh-20260605.html"
+}

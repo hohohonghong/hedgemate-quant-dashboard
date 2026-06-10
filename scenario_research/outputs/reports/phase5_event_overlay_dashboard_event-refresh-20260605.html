@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Phase 5 Event Overlay · event-refresh-20260605</title>
+  <style>
+    :root { --ink:#17211b; --muted:#66756b; --paper:#f7f2e8; --card:#fffaf0; --accent:#276749; --warn:#b7791f; --line:#e3d8c7; }
+    body { margin:0; font-family: 'Aptos', 'Noto Sans KR', sans-serif; color:var(--ink); background:linear-gradient(135deg,#f7f2e8,#eaf3ea); }
+    main { max-width:1180px; margin:0 auto; padding:36px 24px 56px; }
+    h1 { font-size:34px; margin:0 0 8px; }
+    h2 { margin-top:34px; }
+    .lead { color:var(--muted); max-width:820px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:18px; box-shadow:0 12px 24px rgba(23,33,27,.08); }
+    .card h3 { color:var(--accent); font-size:30px; margin:8px 0; }
+    .eyebrow, small { color:var(--muted); }
+    table { width:100%; border-collapse:collapse; background:rgba(255,250,240,.86); border-radius:16px; overflow:hidden; }
+    th, td { border-bottom:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top; }
+    th { background:#ecdfc8; }
+    .warn { color:var(--warn); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Phase 5 뉴스/정책 이벤트 오버레이</h1>
+  <p class="lead">이 화면은 뉴스/정책문이 어떤 시나리오를 보조적으로 밀었는지 보여줍니다. 현재 기본 실행기는 reviewed local fixture 샘플을 기준으로 하며, live research feed나 Phase 6 최종 병합 결과는 아직 포함하지 않습니다.</p>
+  <section class="grid">
+        <article class="card">
+          <div class="eyebrow">2026-05-11 · geopolitical_escalation_supply_shock</div>
+          <h3>77.8%</h3>
+          <p>Shipping and oil risk rise after geopolitical escalation</p>
+          <small>confidence 82.0% · events 1 · risk_off:1</small>
+        </article>
+        
+
+        <article class="card">
+          <div class="eyebrow">2026-05-11 · semiconductor_ai_cycle_shock</div>
+          <h3>75.8%</h3>
+          <p>AI semiconductor leaders pull back as capex expectations are questioned</p>
+          <small>confidence 83.0% · events 1 · semiconductor_down:1</small>
+        </article>
+        
+
+        <article class="card">
+          <div class="eyebrow">2026-05-11 · higher_for_longer_long_rate_shock</div>
+          <h3>74.8%</h3>
+          <p>Long-end yields stay high as policy patience continues</p>
+          <small>confidence 84.0% · events 1 · rate_up:1</small>
+        </article>
+        
+
+        <article class="card">
+          <div class="eyebrow">2026-05-11 · usd_strength_krw_weakness</div>
+          <h3>72.8%</h3>
+          <p>Won volatility keeps Korea portfolios exposed to dollar strength</p>
+          <small>confidence 84.0% · events 1 · fx_pressure:1</small>
+        </article>
+        
+
+        <article class="card">
+          <div class="eyebrow">2026-05-11 · stagflation_reinflation_energy_shock</div>
+          <h3>71.8%</h3>
+          <p>Oil and broad commodities rebound on supply concern</p>
+          <small>confidence 80.0% · events 1 · inflation_up:1</small>
+        </article>
+        
+
+        <article class="card">
+          <div class="eyebrow">2026-05-11 · korea_domestic_financial_stress</div>
+          <h3>69.8%</h3>
+          <p>Korean bank and construction shares lag on domestic credit concerns</p>
+          <small>confidence 79.0% · events 1 · risk_off:1</small>
+        </article>
+        </section>
+  <h2>Scenario Daily Overlay</h2>
+  <table><thead><tr><th>Date</th><th>Scenario</th><th>Overlay</th><th>Confidence</th><th>Event Types</th><th>Evidence</th></tr></thead><tbody><tr><td>2026-05-11</td><td>geopolitical_escalation_supply_shock</td><td>77.8%</td><td>82.0%</td><td>geopolitics</td><td>Reviewed fixture: geopolitical escalation supports supply shock scenario only as an overlay to price signals</td></tr>
+<tr><td>2026-05-11</td><td>semiconductor_ai_cycle_shock</td><td>75.8%</td><td>83.0%</td><td>semiconductor</td><td>Reviewed fixture: AI and semiconductor proxy weakness supports the V2 cycle shock scenario</td></tr>
+<tr><td>2026-05-11</td><td>higher_for_longer_long_rate_shock</td><td>74.8%</td><td>84.0%</td><td>rate</td><td>Reviewed fixture: long-end yield pressure remains a direct stress overlay for duration and growth assets</td></tr>
+<tr><td>2026-05-11</td><td>usd_strength_krw_weakness</td><td>72.8%</td><td>84.0%</td><td>fx</td><td>Reviewed fixture: USD/KRW pressure remains a separate lens for Korean investors</td></tr>
+<tr><td>2026-05-11</td><td>stagflation_reinflation_energy_shock</td><td>71.8%</td><td>80.0%</td><td>commodity</td><td>Reviewed fixture: commodity pressure supports reinflation and energy shock monitoring</td></tr>
+<tr><td>2026-05-11</td><td>korea_domestic_financial_stress</td><td>69.8%</td><td>79.0%</td><td>credit</td><td>Reviewed fixture: Korea domestic credit and property-finance stress is flagged for final merge review</td></tr>
+<tr><td>2026-05-11</td><td>china_trade_fragmentation_shock</td><td>68.8%</td><td>80.0%</td><td>trade</td><td>Reviewed fixture: China demand and trade pressure can spill into Korea semiconductor exposure</td></tr>
+<tr><td>2026-05-11</td><td>acute_global_stress_liquidity_crunch</td><td>67.8%</td><td>78.0%</td><td>credit</td><td>Reviewed fixture: credit and volatility pressure raises acute global stress evidence</td></tr>
+<tr><td>2026-05-11</td><td>soft_landing_goldilocks</td><td>60.8%</td><td>82.0%</td><td>risk_sentiment</td><td>Reviewed fixture: risk appetite and stable growth support a favorable soft-landing diagnosis</td></tr>
+<tr><td>2026-05-11</td><td>slowdown_recession_deflation_risk</td><td>46.8%</td><td>74.0%</td><td>growth</td><td>Reviewed fixture: softer demand is present but below standalone recession stress</td></tr></tbody></table>
+  <h2>Article Events</h2>
+  <table><thead><tr><th>Date</th><th>Source</th><th>Title / Evidence</th><th>Scenario Links</th><th>Severity</th><th>Review</th></tr></thead><tbody><tr><td>2026-05-11</td><td>reviewed_fixture</td><td>AI semiconductor leaders pull back as capex expectations are questioned<br><small>Reviewed fixture: AI and semiconductor proxy weakness supports the V2 cycle shock scenario</small></td><td>semiconductor_ai_cycle_shock</td><td>73.0%</td><td>N</td></tr>
+<tr><td>2026-05-11</td><td>reviewed_fixture</td><td>China demand and trade pressure weigh on Asia exporters<br><small>Reviewed fixture: China demand and trade pressure can spill into Korea semiconductor exposure</small></td><td>china_trade_fragmentation_shock</td><td>66.0%</td><td>N</td></tr>
+<tr><td>2026-05-11</td><td>reviewed_fixture</td><td>Disinflation and steady growth support risk appetite<br><small>Reviewed fixture: risk appetite and stable growth support a favorable soft-landing diagnosis</small></td><td>soft_landing_goldilocks</td><td>58.0%</td><td>N</td></tr>
+<tr><td>2026-05-11</td><td>reviewed_fixture</td><td>Korean bank and construction shares lag on domestic credit concerns<br><small>Reviewed fixture: Korea domestic credit and property-finance stress is flagged for final merge review</small></td><td>korea_domestic_financial_stress</td><td>67.0%</td><td>N</td></tr>
+<tr><td>2026-05-11</td><td>reviewed_fixture</td><td>Long-end yields stay high as policy patience continues<br><small>Reviewed fixture: long-end yield pressure remains a direct stress overlay for duration and growth assets</small></td><td>higher_for_longer_long_rate_shock</td><td>72.0%</td><td>N</td></tr>
+<tr><td>2026-05-11</td><td>reviewed_fixture</td><td>Oil and broad commodities rebound on supply concern<br><small>Reviewed fixture: commodity pressure supports reinflation and energy shock monitoring</small></td><td>stagflation_reinflation_energy_shock</td><td>69.0%</td><td>N</td></tr>
+<tr><td>2026-05-11</td><td>reviewed_fixture</td><td>Services demand is slower but not recessionary<br><small>Reviewed fixture: softer demand is present but below standalone recession stress</small></td><td>slowdown_recession_deflation_risk</td><td>44.0%</td><td>N</td></tr>
+<tr><td>2026-05-11</td><td>reviewed_fixture</td><td>Shipping and oil risk rise after geopolitical escalation<br><small>Reviewed fixture: geopolitical escalation supports supply shock scenario only as an overlay to price signals</small></td><td>geopolitical_escalation_supply_shock</td><td>75.0%</td><td>N</td></tr>
+<tr><td>2026-05-11</td><td>reviewed_fixture</td><td>Volatility rises as credit spreads widen from low levels<br><small>Reviewed fixture: credit and volatility pressure raises acute global stress evidence</small></td><td>acute_global_stress_liquidity_crunch</td><td>65.0%</td><td>N</td></tr>
+<tr><td>2026-05-11</td><td>reviewed_fixture</td><td>Won volatility keeps Korea portfolios exposed to dollar strength<br><small>Reviewed fixture: USD/KRW pressure remains a separate lens for Korean investors</small></td><td>usd_strength_krw_weakness</td><td>70.0%</td><td>N</td></tr></tbody></table>
+  <h2 class="warn">Needs Review</h2>
+  <ul><li>검토 필요 이벤트 없음</li></ul>
+</main>
+</body>
+</html>

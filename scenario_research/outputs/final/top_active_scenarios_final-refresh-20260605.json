@@ -1,0 +1,33 @@
+{
+  "date": "2026-06-04",
+  "merge_engine_version": "phase6_final_market_state_v1",
+  "top_active_scenarios": [
+    {
+      "scenario_code": "usd_strength_krw_weakness",
+      "scenario_name": "USD Strength / KRW Weakness",
+      "scenario_name_ko": "달러강세/원화약세장",
+      "final_score": 79.259566,
+      "final_confidence": 82.164232,
+      "final_display_state": "STRESS",
+      "lens": "fx_krw"
+    },
+    {
+      "scenario_code": "china_trade_fragmentation_shock",
+      "scenario_name": "China / Trade Fragmentation Shock",
+      "scenario_name_ko": "중국·무역분절 충격장",
+      "final_score": 64.595008,
+      "final_confidence": 73.223023,
+      "final_display_state": "ACTIVE",
+      "lens": "china_asia"
+    },
+    {
+      "scenario_code": "higher_for_longer_long_rate_shock",
+      "scenario_name": "Higher-for-Longer / Long-Rate Shock",
+      "scenario_name_ko": "장기금리 부담장",
+      "final_score": 61.0719,
+      "final_confidence": 60.332483,
+      "final_display_state": "ACTIVE",
+      "lens": "us_global"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+date,source,title,url_or_ref,event_type,region,affected_assets,direction,severity,novelty,time_horizon,scenario_links,evidence_span,extract_confidence
+2026-05-11,reviewed_fixture,Malformed row missing evidence,local://phase5-wave2/malformed-missing-evidence,geopolitics,global,USO|GLD,risk_off,70,60,days,geopolitical_escalation_supply_shock,,75
+2026-05-11,reviewed_fixture,Malformed row with invalid enum,local://phase5-wave2/malformed-invalid-enum,not_a_type,korea,EWY,not_a_direction,101,55,weeks,korea_domestic_financial_stress,Invalid enum and numeric range should be review or fatal depending on strict mode,70
+2026-05-11,reviewed_fixture,Malformed row missing scenario links,local://phase5-wave2/malformed-missing-links,credit,korea,105560.KS,risk_off,62,58,days,,Missing scenario links should enter review queue in non-strict mode,68

@@ -1,0 +1,18 @@
+{
+  "run_id": "final-refresh-20260605",
+  "pipeline_phase": "phase6_final_merge",
+  "state_path": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\processed\\scenario_state_daily_scenario-refresh-20260605.csv",
+  "overlay_path": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\events\\event_overlay_daily_event-refresh-20260605.csv",
+  "api_free": true,
+  "engine_version": "phase6_final_market_state_v1",
+  "final_csv": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\final\\final_market_state_daily_final-refresh-20260605.csv",
+  "confidence_csv": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\final\\scenario_confidence_final-refresh-20260605.csv",
+  "top_json": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\final\\top_active_scenarios_final-refresh-20260605.json",
+  "summary_md": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\reports\\final_market_state_summary_final-refresh-20260605.md",
+  "scenario_vector_csv": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\scenario_vectors\\current_scenario_vector_final-refresh-20260605.csv",
+  "scenario_vector_json": "C:\\Users\\석민\\Documents\\cau_2026_ss\\금융인공지능실습1\\project\\scenario_research\\outputs\\scenario_vectors\\current_scenario_vector_final-refresh-20260605.json",
+  "final_row_count": 13161,
+  "overlay_row_count": 10,
+  "scenario_vector_row_count": 10,
+  "scenario_vector_as_of_date": "2026-06-04"
+}

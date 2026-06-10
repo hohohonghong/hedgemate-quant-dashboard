@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+hedge-front/node_modules/
+
+# Build outputs
+dist/
+hedge-front/dist/
+
+# Runtime and generated analysis outputs
+output/
+outputs/
+HedgeMate/outputs/
+scenario_research/outputs/
+
+# Python caches and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local environment and logs
+.env
+.env.*
+*.local
+*.log
+logs/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Personal report artifacts
+*.docx
+*.pptx
+*.xlsx
