@@ -81,7 +81,7 @@ def start_backend():
     backend_env.setdefault("HEDGEMATE_SERVER_SAFE_MODE", "1")
     command = [
         sys.executable,
-        "scripts/serve_dashboard.py",
+        "scripts/serve_dashboard_beecast.py",
         "--host",
         "127.0.0.1",
         "--port",
