@@ -18,7 +18,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from urllib.parse import parse_qs, unquote, urlparse
 from zoneinfo import ZoneInfo
 
@@ -611,6 +611,13 @@ def resolve_any_artifact(raw_path, default_dir=None):
         return None
     candidate = Path(str(raw_path))
     candidates = []
+    if default_dir:
+        fallback_names = []
+        for name in (candidate.name, PureWindowsPath(str(raw_path)).name):
+            if name and name not in fallback_names:
+                fallback_names.append(name)
+        for name in fallback_names:
+            candidates.append(Path(default_dir) / name)
     if candidate.is_absolute():
         candidates.append(candidate)
     else:
@@ -1307,7 +1314,7 @@ def latest_intraday_nowcast_status(reference_dt=None):
     metadata = read_json(metadata_path, {}) if metadata_path else {}
     if not isinstance(metadata, dict):
         metadata = {}
-    vector_path = Path(metadata.get("vector_json_path")) if metadata.get("vector_json_path") else latest_path(
+    vector_path = resolve_any_artifact(metadata.get("vector_json_path"), default_dir=SCENARIO_NOWCAST_DIR) if metadata.get("vector_json_path") else latest_path(
         SCENARIO_NOWCAST_DIR,
         "current_intraday_nowcast_*.json",
     )
@@ -1323,8 +1330,8 @@ def latest_intraday_nowcast_status(reference_dt=None):
         "bucketHours": 3,
         "interval": metadata.get("interval") or None,
         "dataVersion": metadata.get("data_version") or metadata.get("dataVersion") or None,
-        "metadataPath": str(metadata_path) if metadata_path else None,
-        "vectorPath": str(vector_path) if vector_path else None,
+        "metadataPath": (artifact_rel_from_path(metadata_path) or str(metadata_path)) if metadata_path else None,
+        "vectorPath": (artifact_rel_from_path(vector_path) or str(vector_path)) if vector_path else None,
         "nowcastCount": len(vector_rows) if isinstance(vector_rows, list) else None,
     }
 

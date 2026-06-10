@@ -1311,6 +1311,63 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(job["mode"], "intraday_nowcast")
         self.assertNotIn("cmd", calls)
 
+    def test_latest_intraday_nowcast_status_resolves_packaged_vector_when_metadata_has_dev_path(self):
+        old_values = {
+            name: getattr(serve_dashboard, name)
+            for name in (
+                "ROOT",
+                "SCENARIO_RESEARCH_ROOT",
+                "SCENARIO_OUTPUT_DIR",
+                "SCENARIO_REPORT_DIR",
+                "SCENARIO_NOWCAST_DIR",
+            )
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            serve_dashboard.ROOT = workspace / "HedgeMate"
+            serve_dashboard.SCENARIO_RESEARCH_ROOT = workspace / "scenario_research"
+            serve_dashboard.SCENARIO_OUTPUT_DIR = serve_dashboard.SCENARIO_RESEARCH_ROOT / "outputs"
+            serve_dashboard.SCENARIO_REPORT_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "reports"
+            serve_dashboard.SCENARIO_NOWCAST_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "nowcast_vectors"
+            serve_dashboard.SCENARIO_REPORT_DIR.mkdir(parents=True)
+            serve_dashboard.SCENARIO_NOWCAST_DIR.mkdir(parents=True)
+            filename = "current_intraday_nowcast_1h_intraday-refresh-20260610.json"
+            (serve_dashboard.SCENARIO_REPORT_DIR / "intraday_nowcast_metadata_1h_intraday-refresh-20260610.json").write_text(
+                json.dumps(
+                    {
+                        "data_version": "20260610",
+                        "interval": "1h",
+                        "latest_timestamp_kst": "2026-06-10T18:10:03+09:00",
+                        "vector_json_path": f"C:\\Users\\dev\\project\\scenario_research\\outputs\\nowcast_vectors\\{filename}",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (serve_dashboard.SCENARIO_NOWCAST_DIR / filename).write_text(
+                json.dumps(
+                    [
+                        {"nowcast_code": "kr_risk_on", "as_of_kst": "2026-06-10T18:10:03+09:00"},
+                        {"nowcast_code": "usd_krw_pressure", "as_of_kst": "2026-06-10T18:10:03+09:00"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            try:
+                status = serve_dashboard.latest_intraday_nowcast_status(
+                    reference_dt=datetime(2026, 6, 10, 18, 30, tzinfo=serve_dashboard.KST)
+                )
+            finally:
+                for name, value in old_values.items():
+                    setattr(serve_dashboard, name, value)
+
+        self.assertTrue(status["fresh"])
+        self.assertEqual(status["nowcastCount"], 2)
+        self.assertEqual(
+            status["vectorPath"],
+            f"scenario_research/outputs/nowcast_vectors/{filename}",
+        )
+        self.assertNotIn("C:\\Users", status["vectorPath"])
+
     def test_refresh_request_attaches_to_running_refresh_job(self):
         with serve_dashboard.RUN_JOBS_LOCK:
             serve_dashboard.RUN_JOBS.clear()
