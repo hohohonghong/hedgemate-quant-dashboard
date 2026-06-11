@@ -9,7 +9,7 @@ import './MarketStateDashboard.css';
 const MARKET_STATE_TABS = [
   { id: 'summary', label: '요약' },
   { id: 'lens', label: '관점별 국면 분류' },
-  { id: 'shortTerm', label: '장중 참고 신호' },
+  { id: 'shortTerm', label: '단기 보조 신호' },
 ];
 
 const toNumber = (value, fallback = null) => {
@@ -21,12 +21,6 @@ const formatNumber = (value, digits = 2) => {
   const number = toNumber(value);
   if (number === null) return '-';
   return number.toFixed(digits);
-};
-
-const formatPercentLike = (value) => {
-  const number = toNumber(value);
-  if (number === null) return '-';
-  return Math.round(number <= 1 ? number * 100 : number).toString();
 };
 
 const formatKstDateTime = (value) => {
@@ -59,6 +53,18 @@ const formatKstDateTimeShort = (value) => {
     minute: '2-digit',
   });
   return `${datePart} ${timePart}`;
+};
+
+const formatKstDateOnly = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return formatDateLabel(value);
+  return date.toLocaleDateString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).replace(/\.\s*/g, '.').replace(/\.$/, '');
 };
 
 const formatDateLabel = (value) => {
@@ -99,19 +105,6 @@ const progressStyle = (score) => ({
   width: `${Math.max(0, Math.min(100, toNumber(score, 0)))}%`,
 });
 
-const SCENARIO_CODE_LABELS = {
-  soft_landing_goldilocks: '골디락스/연착륙',
-  slowdown_recession_deflation_risk: '경기둔화/침체',
-  higher_for_longer_long_rate_shock: '장기금리 부담',
-  stagflation_reinflation_energy_shock: '재인플레/에너지',
-  usd_strength_krw_weakness: '달러강세/원화약세',
-  acute_global_stress_liquidity_crunch: '글로벌 스트레스',
-  china_trade_fragmentation_shock: '중국/무역 분절',
-  semiconductor_ai_cycle_shock: '반도체/AI 사이클',
-  korea_domestic_financial_stress: '한국 금융 스트레스',
-  geopolitical_escalation_supply_shock: '지정학/공급충격',
-};
-
 const DAILY_SCENARIO_CODE_LABELS = {
   soft_landing_goldilocks: '골디락스/연착륙',
   slowdown_recession_deflation_risk: '경기둔화/침체',
@@ -133,13 +126,29 @@ const NOWCAST_CODE_LABELS = {
   kr_defensive_rotation_intraday: '한국장 방어주 상대 강세',
 };
 
-const scenarioCodeLabel = (code) => DAILY_SCENARIO_CODE_LABELS[code] || SCENARIO_CODE_LABELS[code] || NOWCAST_CODE_LABELS[code] || code;
-
-const severityTone = (value) => {
-  const number = toNumber(value, 0);
-  if (number >= 72) return 'warning';
-  if (number >= 55) return 'neutral';
-  return 'muted';
+const ScenarioCard = ({ row, compact = false }) => {
+  const state = row.final_display_state || row.display_state || row.structured_display_state || row.status || row.raw_state;
+  const score = row.final_score ?? row.score ?? row.structured_score;
+  const confidence = row.final_confidence ?? row.confidence ?? row.structured_confidence;
+  return (
+    <article className={`market-scenario-card ${compact ? 'compact' : ''}`}>
+      <div className="market-card-head">
+        <div>
+          <h3>{scenarioLabel(row)}</h3>
+          <p>{row.scenario_name || row.scenario_code || row.lens || row.nowcast_code || '-'}</p>
+        </div>
+        <span className={`state-chip ${stateTone(state)}`}>{state || '-'}</span>
+      </div>
+      <div className="score-line">
+        <span>Score {formatNumber(score)}</span>
+        <strong>Confidence {formatNumber(confidence)}</strong>
+      </div>
+      <div className="score-meter">
+        <div className="score-meter-fill" style={progressStyle(score)} />
+      </div>
+      {row.market_interpretation_ko && <p className="market-interpretation">{row.market_interpretation_ko}</p>}
+    </article>
+  );
 };
 
 const guideDescription = (type) => (
@@ -349,11 +358,11 @@ const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLea
 };
 const NewsRiskOverlaySection = ({ items, status, isRefreshing, refreshStatus }) => {
   const rows = Array.isArray(items) ? items.slice(0, 5) : [];
-  if (!rows.length || status?.fallbackUsed) return null;
-  const statusText = '검증된 뉴스 오버레이';
+  if (!rows.length) return null;
+  const statusText = '뉴스 참고 자료';
   const referenceText = status?.refreshWindowKst
-    ? `기준 창 ${formatKstDateTime(status.refreshWindowKst)}`
-    : '09:00 / 15:00 / 21:00 KST 창 기준';
+    ? `기준일 ${formatKstDateOnly(status.refreshWindowKst)}`
+    : '제목 · 날짜 · 출처 링크';
 
   return (
     <section className="market-panel news-overlay-panel mt-6">
@@ -374,12 +383,10 @@ const NewsRiskOverlaySection = ({ items, status, isRefreshing, refreshStatus }) 
 
       <div className="news-overlay-list">
         {rows.map((item, index) => {
-          const scenarioLinks = Array.isArray(item.scenarioLinks) ? item.scenarioLinks : [];
           const url = String(item.url || '');
           const title = item.displayTitleKo || item.title || '제목 없음';
-          const summary = item.displaySummaryKo || item.evidenceSpan || '근거 문장이 없습니다.';
           const source = item.sourceKo || item.source || '-';
-          const riskLabel = item.riskLabelKo || item.eventType || '시장 리스크';
+          const publishedDate = formatKstDateOnly(item.date || item.publishedAt || item.timestamp || item.timeHorizon);
           const hasSourceLink = /^https?:\/\//i.test(url);
           return (
             <article className="news-overlay-item" key={`${title || 'news'}-${index}`}>
@@ -397,16 +404,7 @@ const NewsRiskOverlaySection = ({ items, status, isRefreshing, refreshStatus }) 
                   ) : (
                     <span className="news-source-chip muted">출처: {source}</span>
                   )}
-                  <span>{riskLabel}</span>
-                  <span>{formatKstDateTime(item.date) || item.timeHorizon || '-'}</span>
-                  <span className={`state-chip ${severityTone(item.severity)}`}>위험도 {formatNumber(item.severity, 0)}</span>
-                  <span>신뢰도 {formatPercentLike(item.confidence)}</span>
-                </div>
-                <p>{summary}</p>
-                <div className="news-scenario-links" aria-label="연결된 시장국면">
-                  {scenarioLinks.length
-                    ? scenarioLinks.slice(0, 3).map((code) => <span key={code}>{scenarioCodeLabel(code)}</span>)
-                    : <span>시장국면 미분류</span>}
+                  <span>{publishedDate || '-'}</span>
                 </div>
               </div>
             </article>
@@ -477,46 +475,20 @@ const LensSummaryPanel = ({ lensSummary, stateCounts }) => (
   </section>
 );
 
-const IntradaySignalRow = ({ row }) => {
-  const status = nowcastStatus(row);
-  const score = row.score ?? row.final_score ?? row.structured_score;
-  const confidence = row.confidence ?? row.final_confidence ?? row.structured_confidence;
-  const asOf = row.asOfKst || row.as_of_kst || row.latestTimestampKst;
-  const interpretation = cleanText(row.interpretation_ko || row.market_interpretation_ko || row.interpretationKo);
-  return (
-    <article className="intraday-signal-row">
-      <div className="intraday-signal-main">
-        <span className="intraday-signal-label">참고</span>
-        <div>
-          <h3>{scenarioLabel(row)}</h3>
-          <p>{interpretation || '장중 가격 흐름에서 관찰된 보조 신호입니다.'}</p>
-        </div>
-      </div>
-      <div className="intraday-signal-metrics">
-        <span className={`state-chip ${stateTone(status)}`}>{status || '-'}</span>
-        <span>점수 {formatNumber(score, 1)}</span>
-        <span>신뢰도 {formatNumber(confidence, 1)}</span>
-        {asOf && <span>{formatKstDateTimeShort(asOf)}</span>}
-      </div>
-    </article>
-  );
-};
-
 const ShortTermSignalsPanel = ({ nowcastLeaders }) => {
   return (
     <section className="market-tab-panel mt-4" id="market-state-panel-shortTerm" role="tabpanel" aria-labelledby="market-state-tab-shortTerm">
       <article className="market-panel">
         <div className="market-section-head">
           <div>
-            <span>Intraday Reference Layer</span>
-            <h2>장중 참고 신호</h2>
-            <p className="market-section-helper">정식 시장국면을 대체하지 않는 보조 신호입니다.</p>
+            <span>Nowcast & Event Overlay</span>
+            <h2>단기 보조 신호</h2>
           </div>
         </div>
-        <div className="intraday-signal-list">
+        <div className="market-scenario-stack">
           {nowcastLeaders.length
             ? nowcastLeaders.slice(0, 5).map((row, index) => (
-              <IntradaySignalRow key={`${row.nowcast_code || index}-nowcast`} row={row} />
+              <ScenarioCard key={`${row.nowcast_code || index}-nowcast`} row={row} compact />
             ))
             : <div className="market-empty">단기 nowcast 신호가 없습니다.</div>}
         </div>

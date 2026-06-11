@@ -25,11 +25,19 @@ if (source.includes('Top5 뉴스 오버레이가 아직 없습니다')) {
   fail('empty Top5 news placeholder must not be rendered');
 }
 
-requireIncludes('if (!rows.length || status?.fallbackUsed) return null;', 'quiet news fallback behavior');
+requireIncludes('if (!rows.length) return null;', 'empty news fallback behavior');
+requireIncludes("const statusText = '뉴스 참고 자료';", 'minimal news status text');
+requireIncludes('formatKstDateOnly(item.date', 'date-only news rendering');
+requireIncludes('출처: {source}', 'source link rendering');
 requireIncludes('const primary = hasDailyPrimary ?', 'daily market state primary selection');
 requireIncludes('<span className="state-chip neutral">시장국면</span>', 'market-state label chip');
 requireIncludes('장중 참고 신호', 'intraday reference label');
-requireIncludes('정식 시장국면을 대체하지 않는 보조 신호입니다.', 'intraday helper copy');
-requireIncludes('intraday-signal-row', 'compact intraday row UI');
+requireIncludes('정식 시장국면을 대체하지 않는 장중 참고 신호입니다.', 'summary intraday helper copy');
+requireIncludes('단기 보조 신호', 'restored short-term tab label');
+requireIncludes('<ScenarioCard key={`${row.nowcast_code || index}-nowcast`} row={row} compact />', 'restored short-term scenario card UI');
+
+if (source.includes('intraday-signal-row')) {
+  fail('short-term intraday tab should use the previous scenario-card UI');
+}
 
 console.log('MarketState QA passed');
