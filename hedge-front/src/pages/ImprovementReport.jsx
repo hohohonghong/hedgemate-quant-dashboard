@@ -3,7 +3,7 @@ import { Shield, Rocket, ChevronDown, ChevronUp, Briefcase, AlertCircle, ArrowRi
 import { Button } from '../components/Button';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePortfolios } from '../context/PortfolioContext';
-import { getHedgeMateStatus, getProductDashboard, pollRunStatus, previewPortfolio, refreshMarketData, runPortfolioAnalysis, toBackendPortfolioRows } from '../services/hedgemateApi';
+import { getHedgeMateStatus, getProductDashboard, pollRunStatus, previewPortfolio, runPortfolioAnalysis, toBackendPortfolioRows } from '../services/hedgemateApi';
 import { METRIC_DEFINITIONS, formatMetricDelta, formatMetricValue, toHedgeMateViewModel } from '../services/hedgemateViewModel';
 import './ImprovementReport.css';
 
@@ -341,6 +341,9 @@ export const ImprovementReport = () => {
         marketDataDisplayAsOfKst: dashboard?.dataFreshness?.marketDataDisplayAsOfKst,
         intradayNowcastLatestTimestampKst: dashboard?.dataFreshness?.intradayNowcastLatestTimestampKst,
       });
+      if (statusPayload || dashboard?.dataFreshness) {
+        setMarketDataAutoStatus(marketDataStatusMessage(statusPayload || {}, dashboard));
+      }
       setDashboardPayload(dashboard);
       return { dashboard };
     } catch (error) {
@@ -355,102 +358,53 @@ export const ImprovementReport = () => {
     }
   };
 
-  const runMarketDataOnlyRefresh = async ({
-    signal,
-    onStatus,
-    timeoutMs = 15 * 60 * 1000,
-  } = {}) => {
-    const refreshJob = await refreshMarketData({
-      mode: 'market_data_only',
-      autoRefresh: true,
-      maxComboSize: 2,
-      useLivePrices: true,
-    }, {
-      signal,
-      timeoutMs: 30 * 1000,
-    });
-
-    if (['skipped_latest', 'completed', 'blocked_by_existing_job'].includes(refreshJob.status)) {
-      return refreshJob;
-    }
-    if (!refreshJob.jobId) {
-      throw new Error('시장데이터 확인 작업 ID를 받지 못했습니다.');
-    }
-    const finalStatus = await pollRunStatus(refreshJob.jobId, onStatus, {
-      intervalMs: 3000,
-      timeoutMs,
-      signal,
-    });
-    if (finalStatus.status !== 'completed') {
-      throw new Error(finalStatus.error || '시장데이터 확인이 완료되지 않았습니다.');
-    }
-    return finalStatus;
-  };
-
-  const marketDataStatusMessage = (result) => {
-    const freshness = result?.result?.freshness || result?.freshness || {};
-    const intradayNowcast = result?.result?.intradayNowcast || result?.intradayNowcast || freshness?.intradayNowcast || {};
+  const marketDataStatusMessage = (statusPayload = {}, dashboard = {}) => {
+    const freshness = dashboard?.dataFreshness || {};
+    const marketStatus = String(statusPayload?.market_data || '').toUpperCase();
+    const intradayStatus = String(statusPayload?.intraday_nowcast || '').toUpperCase();
     const asOfText = formatKstDateTime(
       freshness.marketDataDisplayAsOfKst
       || freshness.intradayNowcastLatestTimestampKst
-      || intradayNowcast.latestTimestampKst
+      || statusPayload.marketDataDisplayAsOfKst
+      || statusPayload.intradayNowcastLatestTimestampKst
     );
-    const staleTickers = result?.result?.staleTickers || freshness.marketDataStaleTickers || [];
-    if (result?.status === 'blocked_by_existing_job') {
+    const marketFresh = marketStatus === 'FRESH' || freshness.marketDataFresh === true;
+    const intradayFresh = intradayStatus === 'FRESH' || freshness.intradayNowcastFresh === true;
+    const refreshing = marketStatus === 'REFRESHING' || intradayStatus === 'REFRESHING';
+    const staleTickers = freshness.marketDataStaleTickers || [];
+    if (refreshing) {
       return {
-        level: 'warning',
-        message: '다른 시장데이터 작업이 진행 중입니다. 현재 저장된 리포트를 먼저 불러옵니다.',
+        running: true,
+        level: 'info',
+        message: '공통 시장데이터 갱신이 백그라운드에서 진행 중입니다. 저장된 리포트를 먼저 표시합니다.',
       };
     }
     if (staleTickers.length > 0) {
       return {
+        running: false,
         level: 'warning',
-        message: `실시간 데이터 확인 완료. 일부 종목(${staleTickers.length}개)은 반영이 지연되어 경고로 처리됩니다.`,
+        message: `시장데이터 일부 종목(${staleTickers.length}개)이 지연 상태입니다. 스케줄러 갱신 후 다시 확인하세요.`,
+      };
+    }
+    if (marketFresh && intradayFresh) {
+      return {
+        running: false,
+        level: 'ok',
+        message: asOfText ? `시장데이터 최신 확인 · ${asOfText}` : '시장데이터 최신 확인',
       };
     }
     if (freshness.marketDataRefreshAttempted && !freshness.marketDataFresh) {
       return {
+        running: false,
         level: 'warning',
-        message: '오늘 실시간 데이터 확인을 이미 시도했습니다. 남은 지연 종목은 경고로 처리합니다.',
+        message: '오늘 시장데이터 갱신을 이미 시도했습니다. 남은 지연 종목은 스케줄러가 다시 확인합니다.',
       };
     }
     return {
-      level: 'ok',
-      message: asOfText ? `실시간 데이터 확인 완료 · ${asOfText}` : '실시간 데이터 확인 완료',
+      running: false,
+      level: 'warning',
+      message: '시장데이터 갱신이 필요합니다. 자동 실행하지 않고 저장된 리포트를 먼저 표시합니다.',
     };
-  };
-
-  const refreshMarketDataBeforeDashboard = async (signal) => {
-    setMarketDataAutoStatus({
-      running: true,
-      message: '실시간 시장데이터 확인 중',
-      level: 'info',
-    });
-    try {
-      const result = await runMarketDataOnlyRefresh({
-        signal,
-        onStatus: () => {
-          if (signal?.aborted) return;
-          setMarketDataAutoStatus({
-            running: true,
-            message: '실시간 시장데이터 확인 중',
-            level: 'info',
-          });
-        },
-      });
-      if (signal?.aborted) return;
-      const next = marketDataStatusMessage(result);
-      setMarketDataAutoStatus({ running: false, ...next });
-      return result;
-    } catch (error) {
-      if (signal?.aborted || error.name === 'AbortError') return null;
-      setMarketDataAutoStatus({
-        running: false,
-        message: error.message || '시장데이터 자동 확인을 완료하지 못했습니다. 저장된 리포트를 먼저 불러옵니다.',
-        level: 'warning',
-      });
-      return null;
-    }
   };
 
   useEffect(() => {
@@ -465,20 +419,7 @@ export const ImprovementReport = () => {
   useEffect(() => {
     if (selectedPortfolio) {
       const controller = new AbortController();
-      (async () => {
-        const [refreshResult] = await Promise.allSettled([
-          refreshMarketDataBeforeDashboard(controller.signal),
-          loadBackendDashboard({ signal: controller.signal }),
-        ]);
-        if (
-          !controller.signal.aborted
-          && refreshResult.status === 'fulfilled'
-          && refreshResult.value?.status === 'completed'
-          && refreshResult.value?.result?.skipped !== true
-        ) {
-          await loadBackendDashboard({ signal: controller.signal });
-        }
-      })();
+      loadBackendDashboard({ signal: controller.signal });
       return () => controller.abort();
     }
     return undefined;
@@ -536,33 +477,25 @@ export const ImprovementReport = () => {
     setRunState((prev) => ({
       ...prev,
       running: true,
-      stage: '실시간 시장데이터 확인 중',
+      stage: '시장데이터 상태 확인 중',
       currentStep: 'market data freshness check',
-      estimatedRemainingMessage: '오늘 이미 확인한 경우 바로 분석으로 넘어갑니다.',
+      estimatedRemainingMessage: '공통 데이터가 이미 최신이면 바로 분석으로 넘어갑니다.',
       error: '',
     }));
-    const finalStatus = await runMarketDataOnlyRefresh({
-      timeoutMs: 8 * 60 * 1000,
-      onStatus: (status) => {
-        setRunState((prev) => ({
-          ...prev,
-          running: true,
-          jobId: status.jobId || prev.jobId,
-          stage: '실시간 시장데이터 확인 중',
-          currentStep: 'market data freshness check',
-          estimatedRemainingMessage: status.estimatedRemainingMessage || '',
-          elapsedSeconds: keepElapsedMonotonic(prev.elapsedSeconds, status.elapsedSeconds ?? prev.elapsedSeconds),
-          timeoutSeconds: status.timeoutSeconds ?? prev.timeoutSeconds,
-          stagnantStage: Boolean(status.stagnantStage),
-          error: '',
-        }));
-      },
+    const statusPayload = await getHedgeMateStatus({
+      portfolio: selectedPortfolio,
+      timeoutMs: 30 * 1000,
     });
-    if (finalStatus.status === 'blocked_by_existing_job') {
-      throw new Error('다른 시장데이터 작업이 진행 중입니다. 완료 후 포트폴리오 재분석을 다시 실행해 주세요.');
+    const next = marketDataStatusMessage(statusPayload, dashboardPayload);
+    setMarketDataAutoStatus(next);
+    const marketStatus = String(statusPayload?.market_data || '').toUpperCase();
+    const intradayStatus = String(statusPayload?.intraday_nowcast || '').toUpperCase();
+    if (marketStatus === 'REFRESHING' || intradayStatus === 'REFRESHING') {
+      throw new Error('공통 시장데이터 갱신이 백그라운드에서 진행 중입니다. 완료 후 포트폴리오 분석을 다시 실행해 주세요.');
     }
-    const next = marketDataStatusMessage(finalStatus);
-    setMarketDataAutoStatus({ running: false, ...next });
+    if (marketStatus !== 'FRESH' || intradayStatus !== 'FRESH') {
+      throw new Error('시장데이터가 최신 상태가 아닙니다. 스케줄러 갱신 또는 명시적 갱신 완료 후 분석을 실행해 주세요.');
+    }
     setRunState((prev) => ({
       ...prev,
       running: true,
@@ -570,7 +503,7 @@ export const ImprovementReport = () => {
       currentStep: '',
       error: '',
     }));
-    return finalStatus;
+    return statusPayload;
   };
 
   const handleRunAnalysis = async () => {
