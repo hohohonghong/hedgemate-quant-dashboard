@@ -21,6 +21,13 @@ PUBLIC_PORT = int(os.environ.get("PORT", "8000"))
 BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8766"))
 NO_STARTUP_REFRESH_VALUES = {"1", "true", "yes", "on"}
 ENABLE_STARTUP_REFRESH_VALUES = {"1", "true", "yes", "on"}
+TRUTHY_VALUES = {"1", "true", "yes", "on"}
+EXTERNAL_API_ENV_KEYS = (
+    "HEDGEMATE_EXTERNAL_API_BASE",
+    "HEDGEMATE_PUBLIC_BACKEND_URL",
+    "HEDGEMATE_FRONTEND_API_BASE",
+    "VITE_HEDGEMATE_API_URL",
+)
 
 
 def writable_check(path):
@@ -74,6 +81,20 @@ def startup_refresh_disabled():
     if os.environ.get("HEDGEMATE_NO_STARTUP_REFRESH", "").strip().lower() in NO_STARTUP_REFRESH_VALUES:
         return True
     return os.environ.get("HEDGEMATE_ENABLE_STARTUP_REFRESH", "").strip().lower() not in ENABLE_STARTUP_REFRESH_VALUES
+
+
+def external_api_base():
+    for key in EXTERNAL_API_ENV_KEYS:
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value.rstrip("/")
+    return ""
+
+
+def frontend_only_mode():
+    if os.environ.get("HEDGEMATE_BEECAST_FRONTEND_ONLY", "").strip().lower() in TRUTHY_VALUES:
+        return True
+    return bool(external_api_base())
 
 
 def start_backend():
@@ -134,6 +155,28 @@ def main():
         raise SystemExit("Missing hedge-front/dist/index.html. Commit the prebuilt frontend before deploying.")
 
     log_startup_diagnostics()
+    external_api = external_api_base()
+    if frontend_only_mode():
+        if not external_api:
+            raise SystemExit("HEDGEMATE_BEECAST_FRONTEND_ONLY requires HEDGEMATE_EXTERNAL_API_BASE.")
+        subprocess.run(
+            [
+                sys.executable,
+                "serve_frontend.py",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                str(PUBLIC_PORT),
+                "--api-base",
+                external_api,
+                "--frontend-api-base",
+                external_api,
+            ],
+            cwd=str(ROOT),
+            check=True,
+        )
+        return
+
     backend_lock = threading.Lock()
     stop_event = threading.Event()
     backend = start_backend()
