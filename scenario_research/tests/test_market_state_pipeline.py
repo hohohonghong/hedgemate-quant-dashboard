@@ -104,11 +104,12 @@ class MarketStatePipelineTest(unittest.TestCase):
         self.assertTrue(metadata["required_anchor_satisfied"])
         self.assertEqual(metadata["required_tickers_missing_on_anchor_date"], [])
 
-    def test_target_anchor_forward_fill_keeps_latest_required_market_state_date(self):
+    def test_target_anchor_forward_fill_keeps_latest_market_state_date(self):
         series_map = {
             "UUP": [("2026-06-09", 1.0, "hedgemate_market_raw")],
             "SOXX": [("2026-06-09", 1.0, "hedgemate_market_raw")],
             "^VIX": [("2026-06-09", 1.0, "hedgemate_market_raw")],
+            "DIA": [("2026-06-09", 1.0, "hedgemate_market_raw")],
             "SPY": [
                 ("2026-06-09", 1.0, "hedgemate_market_raw"),
                 ("2026-06-10", 1.0, "hedgemate_market_raw"),
@@ -128,7 +129,7 @@ class MarketStatePipelineTest(unittest.TestCase):
         self.assertEqual(anchor_date, "2026-06-10")
         self.assertTrue(metadata["required_anchor_satisfied"])
         self.assertEqual(metadata["required_tickers_missing_on_anchor_date"], [])
-        self.assertEqual({row["ticker"] for row in fill_rows}, {"UUP", "SOXX", "^VIX"})
+        self.assertEqual({row["ticker"] for row in fill_rows}, {"UUP", "SOXX", "^VIX", "DIA"})
 
     def test_scenario_registry_contains_v2_scenarios(self):
         rows = build_scenario_registry_rows()

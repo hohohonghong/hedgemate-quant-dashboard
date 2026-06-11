@@ -86,9 +86,13 @@ REQUIRED_MARKET_STATE_TICKERS = {
     "^VIX",
 }
 DEFAULT_ANCHOR_FORWARD_FILL_SPEC = {"max_gap_days": 3, "strategy": "previous_close_forward_fill"}
+ANCHOR_FORWARD_FILL_TICKERS = {
+    spec["ticker"]
+    for spec in MARKET_STATE_TICKER_SPECS
+}
 ANCHOR_FORWARD_FILL_SPECS = {
     ticker: dict(DEFAULT_ANCHOR_FORWARD_FILL_SPEC)
-    for ticker in REQUIRED_MARKET_STATE_TICKERS
+    for ticker in ANCHOR_FORWARD_FILL_TICKERS
 }
 
 
