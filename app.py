@@ -2,7 +2,8 @@
 """Bee-cast deployment entrypoint for HedgeMate.
 
 This process exposes one public HTTP port, serves the built frontend, and
-proxies /api requests to the existing local HedgeMate backend.
+starts the full HedgeMate backend in the same Bee-cast runtime by default.
+Set HEDGEMATE_BEECAST_FRONTEND_ONLY=true to proxy to an external backend.
 """
 
 import os
@@ -92,9 +93,7 @@ def external_api_base():
 
 
 def frontend_only_mode():
-    if os.environ.get("HEDGEMATE_BEECAST_FRONTEND_ONLY", "").strip().lower() in TRUTHY_VALUES:
-        return True
-    return bool(external_api_base())
+    return os.environ.get("HEDGEMATE_BEECAST_FRONTEND_ONLY", "").strip().lower() in TRUTHY_VALUES
 
 
 def start_backend():
@@ -221,6 +220,8 @@ def main():
                 str(PUBLIC_PORT),
                 "--api-base",
                 f"http://127.0.0.1:{BACKEND_PORT}",
+                "--frontend-api-base",
+                "",
             ],
             cwd=str(ROOT),
             check=True,

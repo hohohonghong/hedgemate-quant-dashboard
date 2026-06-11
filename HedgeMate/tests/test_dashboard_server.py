@@ -165,11 +165,39 @@ class DashboardServerTests(unittest.TestCase):
         command = popen.call_args.args[0]
         self.assertIn("--no-startup-refresh", command)
 
-    def test_deployment_frontend_only_mode_uses_external_api_without_backend(self):
+    def test_deployment_external_api_env_alone_still_starts_integrated_backend(self):
         app = self._load_deployment_app()
         external_api = "https://hedgemate-local-api.example.com"
 
         with mock.patch.dict(app.os.environ, {"HEDGEMATE_EXTERNAL_API_BASE": external_api}, clear=True), \
+             mock.patch.object(app, "log_startup_diagnostics"), \
+             mock.patch.object(app, "start_backend") as start_backend, \
+             mock.patch.object(app, "wait_for_backend"), \
+             mock.patch.object(app.threading, "Thread") as thread, \
+             mock.patch.object(app.subprocess, "run") as run:
+            app.main()
+
+        start_backend.assert_called_once()
+        thread.return_value.start.assert_called_once()
+        command = run.call_args.args[0]
+        self.assertIn("--api-base", command)
+        self.assertIn(f"http://127.0.0.1:{app.BACKEND_PORT}", command)
+        self.assertIn("--frontend-api-base", command)
+        self.assertEqual(command[command.index("--frontend-api-base") + 1], "")
+        self.assertNotIn(external_api, command)
+
+    def test_deployment_frontend_only_mode_uses_external_api_without_backend(self):
+        app = self._load_deployment_app()
+        external_api = "https://hedgemate-local-api.example.com"
+
+        with mock.patch.dict(
+            app.os.environ,
+            {
+                "HEDGEMATE_BEECAST_FRONTEND_ONLY": "1",
+                "HEDGEMATE_EXTERNAL_API_BASE": external_api,
+            },
+            clear=True,
+        ), \
              mock.patch.object(app, "log_startup_diagnostics"), \
              mock.patch.object(app, "start_backend") as start_backend, \
              mock.patch.object(app.subprocess, "run") as run:
