@@ -222,6 +222,22 @@ def read_raw_market_rows(path):
     return rows, latest_by_ticker
 
 
+def scan_raw_market_snapshot(path):
+    row_count = 0
+    latest_by_ticker = {}
+    if not path or not Path(path).exists():
+        return {"rowCount": row_count, "latestByTicker": latest_by_ticker}
+    with Path(path).open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            row_count += 1
+            ticker = str(row.get("ticker") or "").strip()
+            row_date = str(row.get("date") or "").strip()
+            if ticker and row_date and row_date > latest_by_ticker.get(ticker, ""):
+                latest_by_ticker[ticker] = row_date
+    return {"rowCount": row_count, "latestByTicker": latest_by_ticker}
+
+
 def atomic_temp_path(path):
     path = Path(path)
     return path.with_name(f"{path.name}.tmp-{uuid.uuid4().hex}")
@@ -290,6 +306,55 @@ def build_market_cache_summary(rows, universe_tickers, expected_date):
     }
 
 
+def build_market_cache_summary_from_latest(latest_by_ticker, universe_tickers, expected_date):
+    covered_dates = [
+        latest_by_ticker[ticker]
+        for ticker in universe_tickers
+        if latest_by_ticker.get(ticker)
+    ]
+    stale_tickers = [
+        ticker
+        for ticker in universe_tickers
+        if latest_by_ticker.get(ticker, "") < expected_date
+    ]
+    oldest_market_date = min(covered_dates) if covered_dates else None
+    latest_market_date = max(covered_dates) if covered_dates else None
+    max_market_date = max(covered_dates) if covered_dates else None
+    coverage_ratio = (len(universe_tickers) - len(stale_tickers)) / len(universe_tickers) if universe_tickers else 0.0
+    return {
+        "oldestMarketDate": oldest_market_date,
+        "latestMarketDate": latest_market_date,
+        "maxMarketDate": max_market_date,
+        "latestByTicker": latest_by_ticker,
+        "staleTickers": stale_tickers,
+        "tickerCoverageRatio": coverage_ratio,
+    }
+
+
+def write_incremental_raw_market_snapshot(source_snapshot, target_snapshot, new_rows):
+    source_snapshot = Path(source_snapshot)
+    target_snapshot = Path(target_snapshot)
+    target_snapshot.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = atomic_temp_path(target_snapshot)
+    try:
+        with source_snapshot.open("r", encoding="utf-8-sig", newline="") as src, tmp_path.open(
+            "w", encoding="utf-8", newline=""
+        ) as dst:
+            reader = csv.DictReader(src)
+            writer = csv.DictWriter(dst, fieldnames=RAW_MARKET_COLUMNS)
+            writer.writeheader()
+            for row in reader:
+                writer.writerow({column: safe_number(row.get(column)) for column in RAW_MARKET_COLUMNS})
+            for row in new_rows:
+                writer.writerow({column: safe_number(row.get(column)) for column in RAW_MARKET_COLUMNS})
+        tmp_path.replace(target_snapshot)
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def incremental_update_raw_market_data(
     universe_rows,
     output_dir,
@@ -337,8 +402,10 @@ def incremental_update_raw_market_data(
             }
         )
 
-    existing_rows, latest_by_ticker = read_raw_market_rows(source_snapshot)
-    merged = {(row["date"], row["ticker"]): row for row in existing_rows}
+    snapshot_scan = scan_raw_market_snapshot(source_snapshot)
+    existing_row_count = snapshot_scan["rowCount"]
+    latest_by_ticker = dict(snapshot_scan["latestByTicker"])
+    new_rows = []
     rows_added = 0
     fetched_tickers = 0
     skipped_tickers = 0
@@ -412,11 +479,11 @@ def incremental_update_raw_market_data(
                 "currency": meta.get("currency") or "",
                 "ingested_at": ingested_at,
             }
-            key = (row["date"], ticker)
-            if key not in merged:
-                rows_added += 1
+            rows_added += 1
             accepted_rows += 1
-            merged[key] = row
+            new_rows.append(row)
+            if row_date > latest_by_ticker.get(ticker, ""):
+                latest_by_ticker[ticker] = row_date
         if accepted_rows == 0:
             returned_dates = sorted({str(raw.get("date") or "").strip() for raw in fetched_rows if raw.get("date")})
             failed_tickers.append(
@@ -439,11 +506,10 @@ def incremental_update_raw_market_data(
             }
         )
 
-    merged_rows = list(merged.values())
     same_snapshot = source_snapshot.resolve() == target_snapshot.resolve()
     if not (rows_added == 0 and same_snapshot):
-        write_raw_market_rows(target_snapshot, merged_rows)
-    summary = build_market_cache_summary(merged_rows, universe_tickers, target_latest_date)
+        write_incremental_raw_market_snapshot(source_snapshot, target_snapshot, new_rows)
+    summary = build_market_cache_summary_from_latest(latest_by_ticker, universe_tickers, target_latest_date)
     manifest = {
         "manifestVersion": "raw_market_incremental_v1",
         "refreshMode": "market_data_only",
@@ -455,8 +521,8 @@ def incremental_update_raw_market_data(
         "latestMarketDate": summary["latestMarketDate"],
         "maxMarketDate": summary["maxMarketDate"],
         "rowsAdded": rows_added,
-        "existingRows": len(existing_rows),
-        "outputRows": len(merged_rows),
+        "existingRows": existing_row_count,
+        "outputRows": existing_row_count + rows_added,
         "totalTickers": len(universe_tickers),
         "fetchedTickers": fetched_tickers,
         "skippedTickers": skipped_tickers,
