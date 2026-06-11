@@ -228,7 +228,7 @@ const serverPortfolioId = (portfolio) => {
 
 export const getProductDashboard = (options = {}) => {
   const compact = options.compact !== false;
-  const snapshotRead = options.snapshot !== false;
+  const snapshotRead = !options.portfolio && options.snapshot !== false;
   if (snapshotRead) {
     const params = new URLSearchParams();
     if (compact) params.set('compact', '1');

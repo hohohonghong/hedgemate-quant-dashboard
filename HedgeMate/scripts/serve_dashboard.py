@@ -1796,6 +1796,15 @@ def normalize_portfolio_api_payload(payload):
         "assets": assets,
         "portfolioInputFingerprint": fingerprint,
     }
+    for key in (
+        "latestAnalysisRunId",
+        "latestAnalysisAt",
+        "latestAnalysisFingerprintHash",
+        "latestAnalysisPortfolioKey",
+    ):
+        value = payload.get(key)
+        if value not in (None, ""):
+            normalized[key] = str(value)
     return {
         "name": name[:120],
         "portfolioHash": fingerprint["hash"],
@@ -7886,19 +7895,22 @@ def load_product_dashboard_for_saved_portfolio(user_id, portfolio_id=None, portf
     if not portfolio:
         raise FileNotFoundError("Portfolio not found")
 
+    latest_run = store.latest_successful_portfolio_run(
+        user_id,
+        portfolio_id=portfolio.get("portfolioId") if portfolio_id is not None else None,
+        portfolio_hash=portfolio.get("portfolioHash") if portfolio_id is None else None,
+    )
     running = store.latest_running_portfolio_run(
         user_id,
         portfolio_id=portfolio.get("portfolioId") if portfolio_id is not None else None,
         portfolio_hash=portfolio.get("portfolioHash") if portfolio_id is None else None,
     )
     if running:
-        return product_dashboard_needs_analysis_payload(portfolio=portfolio, running_run=running)
+        running_id = int(running.get("id") or 0)
+        latest_success_id = int((latest_run or {}).get("id") or 0)
+        if not latest_run or running_id > latest_success_id:
+            return product_dashboard_needs_analysis_payload(portfolio=portfolio, running_run=running)
 
-    latest_run = store.latest_successful_portfolio_run(
-        user_id,
-        portfolio_id=portfolio.get("portfolioId") if portfolio_id is not None else None,
-        portfolio_hash=portfolio.get("portfolioHash") if portfolio_id is None else None,
-    )
     if not latest_run:
         return product_dashboard_needs_analysis_payload(portfolio=portfolio)
 
@@ -8080,22 +8092,21 @@ def load_service_status(selected_portfolio_id=None, selected_portfolio_hash=None
                 else persistence_store().get_portfolio_by_hash(user_id, selected_portfolio_hash)
             )
             if portfolio:
-                running = persistence_store().latest_running_portfolio_run(
+                selected_dashboard = load_product_dashboard_for_saved_portfolio(
                     user_id,
                     portfolio_id=portfolio.get("portfolioId") if selected_portfolio_id else None,
                     portfolio_hash=portfolio.get("portfolioHash") if not selected_portfolio_id else None,
+                    compact=True,
                 )
-                latest_success = persistence_store().latest_successful_portfolio_run(
-                    user_id,
-                    portfolio_id=portfolio.get("portfolioId") if selected_portfolio_id else None,
-                    portfolio_hash=portfolio.get("portfolioHash") if not selected_portfolio_id else None,
+                selected_product_status = normalize_product_status(
+                    selected_dashboard.get("status") or selected_dashboard.get("productStatus")
                 )
-                if running:
-                    selected_portfolio_status = "REFRESHING"
-                elif latest_success:
-                    selected_portfolio_status = "READY"
-                else:
-                    selected_portfolio_status = "NEEDS_ANALYSIS"
+                selected_raw_product_status = (
+                    selected_dashboard.get("rawProductStatus")
+                    or selected_dashboard.get("productStatus")
+                    or selected_product_status
+                )
+                selected_portfolio_status = selected_product_status
             else:
                 selected_portfolio_status = "ERROR"
         except Exception:

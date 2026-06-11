@@ -129,6 +129,29 @@ class ServerPersistenceAuthPortfolioTests(unittest.TestCase):
         self.assertFalse(self.store.delete_portfolio(bob["id"], alice_portfolio["id"]))
         self.assertTrue(self.store.delete_portfolio(alice["id"], alice_portfolio["id"]))
 
+    def test_portfolio_update_preserves_latest_analysis_metadata(self):
+        user, _ = self.register_user("analysis-meta@example.com")
+        portfolio = serve_dashboard.save_portfolio_for_user(user["id"], portfolio_payload("Analysis Meta"))
+
+        updated = serve_dashboard.save_portfolio_for_user(
+            user["id"],
+            {
+                **portfolio_payload("Analysis Meta"),
+                "status": "analyzed",
+                "latestAnalysisRunId": "run-meta",
+                "latestAnalysisAt": "2026-06-12T00:00:00Z",
+                "latestAnalysisFingerprintHash": "fingerprint-meta",
+                "latestAnalysisPortfolioKey": "AAPL:5.000000:|MSFT:5.000000:",
+            },
+            portfolio_id=portfolio["portfolioId"],
+        )
+
+        self.assertEqual(updated["status"], "analyzed")
+        self.assertEqual(updated["latestAnalysisRunId"], "run-meta")
+        self.assertEqual(updated["latestAnalysisAt"], "2026-06-12T00:00:00Z")
+        self.assertEqual(updated["latestAnalysisFingerprintHash"], "fingerprint-meta")
+        self.assertEqual(updated["latestAnalysisPortfolioKey"], "AAPL:5.000000:|MSFT:5.000000:")
+
     def test_product_dashboard_returns_needs_analysis_without_successful_run(self):
         user, _ = self.register_user("needs@example.com")
         portfolio = serve_dashboard.save_portfolio_for_user(user["id"], portfolio_payload("Needs Analysis"))
@@ -172,6 +195,45 @@ class ServerPersistenceAuthPortfolioTests(unittest.TestCase):
         self.assertEqual(payload["status"], "READY")
         self.assertEqual(payload["productStatus"], "READY")
         self.assertEqual(payload["rawProductStatus"], "ACTION_READY")
+        self.assertEqual(payload["portfolioRun"]["runId"], "run-success")
+
+    def test_product_dashboard_ignores_older_running_run_when_newer_success_exists(self):
+        user, _ = self.register_user("running-stale@example.com")
+        portfolio = serve_dashboard.save_portfolio_for_user(user["id"], portfolio_payload("Recovered Portfolio"))
+        manifest_path = self.root / "outputs" / "analysis_cache" / "manifest.json"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(json.dumps({"active_bundle": {"hedgemate_run": "run-success"}}), encoding="utf-8")
+        self.store.create_portfolio_run(
+            user["id"],
+            portfolio["portfolioId"],
+            portfolio["portfolioHash"],
+            "run-stale-running",
+            data_version="20260610",
+            status="RUNNING",
+        )
+        success_run_id = self.store.create_portfolio_run(
+            user["id"],
+            portfolio["portfolioId"],
+            portfolio["portfolioHash"],
+            "run-success",
+            data_version="20260610",
+            status="RUNNING",
+        )
+        self.store.update_portfolio_run(success_run_id, "SUCCESS", artifact_dir=str(manifest_path), finished=True)
+
+        with mock.patch.object(
+            serve_dashboard,
+            "load_product_dashboard_data",
+            return_value={"productStatus": "REVIEW_ONLY", "dataFreshness": {}, "manifest": {}},
+        ) as loader:
+            payload = serve_dashboard.load_product_dashboard_for_saved_portfolio(
+                user["id"],
+                portfolio_id=portfolio["portfolioId"],
+            )
+
+        self.assertTrue(loader.called)
+        self.assertEqual(payload["status"], "REVIEW_ONLY")
+        self.assertEqual(payload["productStatus"], "REVIEW_ONLY")
         self.assertEqual(payload["portfolioRun"]["runId"], "run-success")
 
     def test_scheduler_records_skipped_fresh_refresh_jobs(self):

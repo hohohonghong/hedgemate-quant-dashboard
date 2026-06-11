@@ -5,6 +5,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { usePortfolios } from '../context/PortfolioContext';
 import { getHedgeMateStatus, getProductDashboard, pollRunStatus, previewPortfolio, runPortfolioAnalysis, toBackendPortfolioRows } from '../services/hedgemateApi';
 import { METRIC_DEFINITIONS, formatMetricDelta, formatMetricValue, toHedgeMateViewModel } from '../services/hedgemateViewModel';
+import {
+  getStoredAnalysisRunForPortfolio,
+  persistAnalysisRunForPortfolio,
+  persistReportPortfolioId,
+  portfolioRunKey,
+  resolveReportPortfolioSelection,
+} from '../services/reportPersistence';
 import './ImprovementReport.css';
 
 const metricKeys = ['cvar', 'mdd', 'beta', 'stress', 'sharpe'];
@@ -105,23 +112,6 @@ const selectedTickerText = (portfolio) => {
   return rows.map((row) => row.ticker || row.asset).filter(Boolean).join(', ') || '선택 자산 없음';
 };
 
-const portfolioRunKey = (portfolio) => {
-  const rows = toBackendPortfolioRows(portfolio || {});
-  const stableNumber = (value) => {
-    const number = Number(value);
-    return Number.isFinite(number) ? number.toFixed(6) : '';
-  };
-  return rows
-    .map((row) => [
-      row.ticker || row.asset,
-      stableNumber(row.quantity),
-      stableNumber(row.amountKrw),
-    ].join(':'))
-    .filter(Boolean)
-    .sort()
-    .join('|');
-};
-
 const riskToneForRank = (rank) => {
   if (rank === 1) return { className: 'danger', label: '높은 위험' };
   if (rank === 2) return { className: 'caution', label: '주의' };
@@ -204,7 +194,7 @@ export const ImprovementReport = () => {
   });
   const [lastAnalysisRun, setLastAnalysisRun] = useState(null);
 
-  const selectedPortfolio = portfolios.find((p) => p.id === selectedPortfolioId);
+  const selectedPortfolio = portfolios.find((p) => String(p.id) === String(selectedPortfolioId));
   const selectedPortfolioRunKey = portfolioRunKey(selectedPortfolio);
   const lastRunAppliesToSelected = Boolean(lastAnalysisRun?.portfolioKey && lastAnalysisRun.portfolioKey === selectedPortfolioRunKey);
   const reportModel = useMemo(
@@ -284,7 +274,6 @@ export const ImprovementReport = () => {
     : staleAnalysisBundle
       ? '최신 데이터로 재분석'
       : '포트폴리오 분석 실행';
-  const analysisRequiredBadge = previewBlocksAnalysis ? '비중 조정 필요' : staleAnalysisBundle ? '재분석 필요' : '분석 대기';
   const displayProductStatus = previewBlocksAnalysis ? 'ERROR' : productUiStatus;
   const analysisRequiredTitle = previewBlocksAnalysis
     ? '단일 자산 비중이 50%를 넘어 분석을 실행할 수 없습니다'
@@ -315,6 +304,7 @@ export const ImprovementReport = () => {
     try {
       const hedgeBudgetKrw = selectedPortfolio?.totalValue ? Math.round(selectedPortfolio.totalValue * 0.1) : '';
       const dashboard = await getProductDashboard(selectedPortfolio ? {
+        snapshot: false,
         portfolio: selectedPortfolio,
         usdKrwRate,
         hedgeBudgetKrw,
@@ -408,13 +398,36 @@ export const ImprovementReport = () => {
   };
 
   useEffect(() => {
-    if (!selectedPortfolioId && portfolios.length > 0) {
-      const params = new URLSearchParams(location.search);
-      const requestedId = params.get('portfolio');
-      const requested = requestedId && portfolios.some((portfolio) => portfolio.id === requestedId);
-      setSelectedPortfolioId(requested ? requestedId : portfolios[0].id);
+    if (portfolios.length === 0) {
+      if (selectedPortfolioId) setSelectedPortfolioId(null);
+      return;
     }
-  }, [portfolios, selectedPortfolioId, location.search]);
+    const selection = resolveReportPortfolioSelection(portfolios, location.search);
+    if (selection.portfolioId && String(selectedPortfolioId || '') !== selection.portfolioId) {
+      setSelectedPortfolioId(selection.portfolioId);
+    }
+    if (!selection.requestedValid && selection.portfolioId) {
+      const params = new URLSearchParams(location.search);
+      params.set('portfolio', selection.portfolioId);
+      navigate({
+        pathname: location.pathname,
+        search: `?${params.toString()}`,
+      }, { replace: true });
+    }
+  }, [portfolios, selectedPortfolioId, location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    if (!selectedPortfolio) {
+      setLastAnalysisRun(null);
+      return;
+    }
+    persistReportPortfolioId(selectedPortfolio.id);
+    const restoredRun = getStoredAnalysisRunForPortfolio(selectedPortfolio);
+    setLastAnalysisRun((prev) => {
+      if (prev?.portfolioKey && selectedPortfolioRunKey && prev.portfolioKey === selectedPortfolioRunKey) return prev;
+      return restoredRun;
+    });
+  }, [selectedPortfolio, selectedPortfolioRunKey]);
 
   useEffect(() => {
     if (selectedPortfolio) {
@@ -469,6 +482,13 @@ export const ImprovementReport = () => {
   }, [selectedPortfolioId, dashboardPayload]);
 
   const handlePortfolioChange = (id) => {
+    persistReportPortfolioId(id);
+    const params = new URLSearchParams(location.search);
+    params.set('portfolio', id);
+    navigate({
+      pathname: location.pathname,
+      search: `?${params.toString()}`,
+    }, { replace: true });
     setSelectedPortfolioId(id);
     setExpandedCard(null);
   };
@@ -510,8 +530,10 @@ export const ImprovementReport = () => {
     if (!selectedPortfolio) return;
     const startedAt = Date.now();
     const runKey = portfolioRunKey(selectedPortfolio);
+    const startedRun = { status: 'running', runId: '', portfolioInputFingerprintHash: '', portfolioKey: runKey };
     setDashboardPayload(null);
-    setLastAnalysisRun({ status: 'running', runId: '', portfolioInputFingerprintHash: '', portfolioKey: runKey });
+    setLastAnalysisRun(startedRun);
+    persistAnalysisRunForPortfolio(selectedPortfolio, startedRun);
     setRunState({
       running: true,
       stage: '포트폴리오 미리보기 확인 중',
@@ -549,13 +571,15 @@ export const ImprovementReport = () => {
         forceReanalysis: false,
         ignoreAnalysisCache: false,
       });
-      setLastAnalysisRun((prev) => ({
-        ...prev,
+      const jobRun = {
+        ...startedRun,
         status: 'running',
-        runId: job.runId || prev?.runId || '',
-        portfolioInputFingerprintHash: job.portfolioInputFingerprintHash || prev?.portfolioInputFingerprintHash || '',
+        runId: job.runId || '',
+        portfolioInputFingerprintHash: job.portfolioInputFingerprintHash || '',
         portfolioKey: runKey,
-      }));
+      };
+      setLastAnalysisRun(jobRun);
+      persistAnalysisRunForPortfolio(selectedPortfolio, jobRun);
       setRunState((prev) => ({
         ...prev,
         jobId: job.jobId,
@@ -587,28 +611,34 @@ export const ImprovementReport = () => {
         }));
       }, { timeoutMs: 15 * 60 * 1000, stagnantStageMs: 5 * 60 * 1000 });
       if (finalStatus.status !== 'completed') {
-        setLastAnalysisRun((prev) => ({
-          ...prev,
+        const failedRun = {
           status: 'failed',
-          runId: finalStatus.runId || prev?.runId || '',
-          portfolioInputFingerprintHash: finalStatus.portfolioInputFingerprintHash || finalStatus.result?.portfolioInputFingerprintHash || prev?.portfolioInputFingerprintHash || '',
+          runId: finalStatus.runId || jobRun.runId || '',
+          portfolioInputFingerprintHash: finalStatus.portfolioInputFingerprintHash || finalStatus.result?.portfolioInputFingerprintHash || jobRun.portfolioInputFingerprintHash || '',
           portfolioKey: runKey,
-        }));
+        };
+        setLastAnalysisRun(failedRun);
+        persistAnalysisRunForPortfolio(selectedPortfolio, failedRun);
         throw new Error(finalStatus.error || '분석 작업이 완료되지 않았습니다.');
       }
-      setLastAnalysisRun((prev) => ({
-        ...prev,
+      const completedAt = new Date().toISOString();
+      const completedRun = {
         status: 'completed',
-        runId: finalStatus.runId || finalStatus.result?.runId || prev?.runId || '',
-        portfolioInputFingerprintHash: finalStatus.portfolioInputFingerprintHash || finalStatus.result?.portfolioInputFingerprintHash || prev?.portfolioInputFingerprintHash || '',
+        runId: finalStatus.runId || finalStatus.result?.runId || jobRun.runId || '',
+        portfolioInputFingerprintHash: finalStatus.portfolioInputFingerprintHash || finalStatus.result?.portfolioInputFingerprintHash || jobRun.portfolioInputFingerprintHash || '',
         portfolioKey: runKey,
-      }));
+        completedAt,
+      };
+      setLastAnalysisRun(completedRun);
+      persistAnalysisRunForPortfolio(selectedPortfolio, completedRun);
       if (selectedPortfolio?.id) {
-        updatePortfolio(selectedPortfolio.id, {
+        await updatePortfolio(selectedPortfolio.id, {
           status: 'analyzed',
-          latestAnalysisRunId: finalStatus.runId || finalStatus.result?.runId || '',
-          latestAnalysisAt: new Date().toISOString(),
-        });
+          latestAnalysisRunId: completedRun.runId,
+          latestAnalysisAt: completedAt,
+          latestAnalysisFingerprintHash: completedRun.portfolioInputFingerprintHash,
+          latestAnalysisPortfolioKey: completedRun.portfolioKey,
+        }).catch(() => null);
       }
       const cachedAnalysisReused = Boolean(finalStatus.result?.cached);
       setRunState((prev) => ({
@@ -647,9 +677,10 @@ export const ImprovementReport = () => {
         if (attempt < 4) await sleep(1500 * attempt);
       }
       if (!matchedDashboardLoaded) {
+        const mismatchText = lastMismatchDetail?.message ? ` (${lastMismatchDetail.message})` : '';
         setRunState((prev) => ({
           ...prev,
-          error: `ERROR: ${productStatusMessage('ERROR')}`,
+          error: `ERROR: ${productStatusMessage('ERROR')}${mismatchText}`,
           stage: '',
         }));
       }
