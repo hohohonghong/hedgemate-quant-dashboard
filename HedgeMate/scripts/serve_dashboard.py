@@ -5206,18 +5206,28 @@ def run_scheduled_refresh_cycle(runner=subprocess.run, thread_factory=threading.
     return {"ok": not SCHEDULER_STATE.get("lastError"), "results": results}
 
 
-def scheduler_next_wait_seconds(reference_dt=None, interval_seconds=SCHEDULER_INTERVAL_SECONDS):
-    if interval_seconds != SCHEDULER_INTERVAL_SECONDS:
-        return max(1, int(interval_seconds))
+def scheduler_next_run_at(reference_dt=None, interval_seconds=SCHEDULER_INTERVAL_SECONDS):
     reference = reference_dt or datetime.now(KST)
     if reference.tzinfo is None:
         reference = reference.replace(tzinfo=KST)
     else:
         reference = reference.astimezone(KST)
+    if interval_seconds != SCHEDULER_INTERVAL_SECONDS:
+        return reference + timedelta(seconds=max(1, int(interval_seconds)))
     anchor = current_intraday_anchor_kst(reference_dt=reference, bucket_hours=3)
     next_run = anchor + timedelta(seconds=SCHEDULER_ANCHOR_GRACE_SECONDS)
     if next_run <= reference:
         next_run = anchor + timedelta(hours=3, seconds=SCHEDULER_ANCHOR_GRACE_SECONDS)
+    return next_run
+
+
+def scheduler_next_wait_seconds(reference_dt=None, interval_seconds=SCHEDULER_INTERVAL_SECONDS):
+    reference = reference_dt or datetime.now(KST)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=KST)
+    else:
+        reference = reference.astimezone(KST)
+    next_run = scheduler_next_run_at(reference_dt=reference, interval_seconds=interval_seconds)
     return max(1, int(math.ceil((next_run - reference).total_seconds())))
 
 
@@ -8175,6 +8185,8 @@ def load_service_status(selected_portfolio_id=None, selected_portfolio_hash=None
             "schedulerDetail": {
                 "lastStartedAt": SCHEDULER_STATE.get("lastStartedAt"),
                 "lastCycleAt": SCHEDULER_STATE.get("lastCycleAt"),
+                "nextCycleAt": scheduler_next_run_at().isoformat() if SCHEDULER_STATE.get("running") else None,
+                "nextWaitSeconds": scheduler_next_wait_seconds() if SCHEDULER_STATE.get("running") else None,
                 "lastError": SCHEDULER_STATE.get("lastError"),
             },
             "recommendationState": recommendation_state,
@@ -8302,6 +8314,8 @@ def runtime_debug_payload():
             "running": bool(SCHEDULER_STATE.get("running")),
             "lastStartedAt": SCHEDULER_STATE.get("lastStartedAt"),
             "lastCycleAt": SCHEDULER_STATE.get("lastCycleAt"),
+            "nextCycleAt": scheduler_next_run_at().isoformat() if SCHEDULER_STATE.get("running") else None,
+            "nextWaitSeconds": scheduler_next_wait_seconds() if SCHEDULER_STATE.get("running") else None,
             "lastError": tail_diagnostic_text(SCHEDULER_STATE.get("lastError"), max_chars=500, max_lines=4)
             if SCHEDULER_STATE.get("lastError")
             else None,

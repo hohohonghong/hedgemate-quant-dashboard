@@ -287,6 +287,8 @@ class ServerPersistenceAuthPortfolioTests(unittest.TestCase):
         self.assertEqual(status["intraday_nowcast"], "FRESH")
         self.assertEqual(status["news_overlay"], "FRESH")
         self.assertEqual(status["selected_portfolio"], "NEEDS_ANALYSIS")
+        self.assertIsNotNone(status["schedulerDetail"]["nextCycleAt"])
+        self.assertGreater(status["schedulerDetail"]["nextWaitSeconds"], 0)
 
     def test_status_reports_fresh_when_market_refresh_marker_remains_after_fresh_cache(self):
         serve_dashboard.RUN_JOBS["stale-market-refresh"] = {

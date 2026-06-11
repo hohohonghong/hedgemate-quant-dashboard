@@ -1283,10 +1283,20 @@ class DashboardServerTests(unittest.TestCase):
                 reference_dt=datetime(2026, 6, 11, 16, 58, tzinfo=serve_dashboard.KST)
             )
             self.assertEqual(wait_seconds, 65 * 60)
+            next_run = serve_dashboard.scheduler_next_run_at(
+                reference_dt=datetime(2026, 6, 11, 16, 58, tzinfo=serve_dashboard.KST)
+            )
+            self.assertEqual(next_run.isoformat(), "2026-06-11T18:03:00+09:00")
             wait_after_anchor = serve_dashboard.scheduler_next_wait_seconds(
                 reference_dt=datetime(2026, 6, 11, 18, 4, tzinfo=serve_dashboard.KST)
             )
             self.assertEqual(wait_after_anchor, 179 * 60)
+            self.assertEqual(
+                serve_dashboard.scheduler_next_run_at(
+                    reference_dt=datetime(2026, 6, 11, 18, 4, tzinfo=serve_dashboard.KST)
+                ).isoformat(),
+                "2026-06-11T21:03:00+09:00",
+            )
             self.assertEqual(
                 serve_dashboard.scheduler_next_wait_seconds(
                     reference_dt=datetime(2026, 6, 11, 18, 4, tzinfo=serve_dashboard.KST),
