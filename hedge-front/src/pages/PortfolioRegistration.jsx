@@ -11,8 +11,11 @@ import './PortfolioRegistration.css';
 
 const TICKER_DB = ASSET_DATABASE;
 let backendAssetOptionsPromise = null;
+const BACKEND_EMPTY_LIST_LIMIT = 160;
+const BACKEND_SEARCH_LIMIT = 80;
+const LOCAL_FALLBACK_LIMIT = 12;
 
-const searchBackendAssetOptions = async (query, limit = 12) => {
+const searchBackendAssetOptions = async (query, limit = BACKEND_SEARCH_LIMIT) => {
   if (!backendAssetOptionsPromise) {
     backendAssetOptionsPromise = getAssets()
       .then((payload) => payload.assets || [])
@@ -168,22 +171,28 @@ export const PortfolioRegistration = () => {
       const trimmedQuery = String(query || '').trim();
       let apiError = '';
       if (!query || query.trim().length < 1) {
-        const popular = searchAssetDatabase('', 12);
+        let popular = [];
+        try {
+          popular = await searchBackendAssetOptions('', BACKEND_EMPTY_LIST_LIMIT);
+        } catch {
+          apiError = 'HedgeMate 자산 목록을 불러오지 못했습니다.';
+          popular = searchAssetDatabase('', LOCAL_FALLBACK_LIMIT);
+        }
         setSuggestions(popular);
         setSearchState({
           rowId: id,
           query: '',
           loading: false,
-          error: '',
+          error: apiError,
           hasSearched: true,
         });
         return;
       }
 
-      const localMatches = searchAssetDatabase(query, 12);
+      const localMatches = searchAssetDatabase(query, LOCAL_FALLBACK_LIMIT);
       let backendMatches = [];
       try {
-        backendMatches = await searchBackendAssetOptions(query, 20);
+        backendMatches = await searchBackendAssetOptions(query, BACKEND_SEARCH_LIMIT);
       } catch {
         apiError = 'HedgeMate 자산 목록을 불러오지 못했습니다.';
       }
@@ -205,17 +214,18 @@ export const PortfolioRegistration = () => {
         }
       }
       
-      // Combine results, prioritizing local database and removing duplicates by ticker
+      // Combine results, prioritizing the deployed HedgeMate universe and removing duplicates by ticker
       const combined = [];
       const seen = new Set();
-      localMatches.forEach(match => {
+
+      backendMatches.forEach(match => {
         if (!seen.has(match.ticker)) {
           combined.push(match);
           seen.add(match.ticker);
         }
       });
 
-      backendMatches.forEach(match => {
+      localMatches.forEach(match => {
         if (!seen.has(match.ticker)) {
           combined.push(match);
           seen.add(match.ticker);

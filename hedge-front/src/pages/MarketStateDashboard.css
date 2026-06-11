@@ -10,29 +10,6 @@
   justify-content: flex-end;
 }
 
-.market-basis-chip {
-  min-width: 150px;
-  padding: 0.58rem 0.78rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  display: grid;
-  gap: 0.16rem;
-  justify-items: end;
-}
-
-.market-basis-chip span {
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.market-basis-chip strong {
-  font-size: 0.92rem;
-  line-height: 1.1;
-}
-
 .market-status,
 .market-loading {
   display: flex;

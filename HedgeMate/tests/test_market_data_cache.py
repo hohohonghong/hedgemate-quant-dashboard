@@ -92,6 +92,57 @@ class MarketDataCacheTests(unittest.TestCase):
             self.assertEqual(manifest["refreshMode"], "market_data_only")
             self.assertEqual(list(output_dir.glob("*.tmp-*")), [])
 
+    def test_incremental_update_accepts_rows_newer_than_target_date(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            source = output_dir / "raw_market_daily_20260521.csv"
+            self.write_raw(
+                source,
+                [
+                    {
+                        "date": "2026-05-21",
+                        "ticker": "BTC-USD",
+                        "asset_class": "crypto",
+                        "source": "yahoo",
+                        "open": 100,
+                        "high": 101,
+                        "low": 99,
+                        "close": 100,
+                        "adj_close": 100,
+                        "volume": 1000,
+                        "currency": "USD",
+                        "ingested_at": "2026-05-21T00:00:00+00:00",
+                    }
+                ],
+            )
+
+            result = market_data_cache.incremental_update_raw_market_data(
+                [{"ticker": "BTC-USD", "asset_class": "crypto", "currency": "USD"}],
+                output_dir,
+                data_version="20260522",
+                target_latest_date="2026-05-22",
+                fetcher=lambda *_args, **_kwargs: [
+                    {
+                        "date": "2026-05-23",
+                        "open": 102,
+                        "high": 103,
+                        "low": 101,
+                        "close": 102,
+                        "adj_close": 102,
+                        "volume": 1200,
+                    }
+                ],
+            )
+
+            manifest = result["manifest"]
+            self.assertEqual(manifest["rowsAdded"], 1)
+            self.assertEqual(manifest["latestMarketDate"], "2026-05-23")
+            self.assertEqual(manifest["failedTickers"], [])
+            self.assertEqual(manifest["staleTickers"], [])
+            with result["rawPath"].open("r", encoding="utf-8", newline="") as f:
+                rows = list(csv.DictReader(f))
+            self.assertTrue(any(row["ticker"] == "BTC-USD" and row["date"] == "2026-05-23" for row in rows))
+
     def test_incremental_update_keeps_partial_failures_as_warnings(self):
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)

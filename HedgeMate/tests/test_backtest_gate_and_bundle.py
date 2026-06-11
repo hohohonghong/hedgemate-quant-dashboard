@@ -1052,17 +1052,23 @@ class ActiveBundleTests(unittest.TestCase):
                     {
                         "active_final_run": "final-prod",
                         "active_hedgemate_run": "20260310T000000000000-deadbeef",
-                        "active_hedgemate_sensitivity_path": "../HedgeMate/outputs/processed/asset_scenario_sensitivity_20260310T000000000000-deadbeef.csv",
+                        "active_hedgemate_sensitivity_path": "../../HedgeMate/outputs/processed/asset_scenario_sensitivity_20260310T000000000000-deadbeef.csv",
                     }
                 ),
                 encoding="utf-8",
             )
             manifest = {
                 "active_hedgemate_run": "hedgemate-prod",
+                "active_scenario_run": "scenario-prod",
+                "active_final_run": "final-prod-new",
+                "active_backtest_run": "backtest-prod",
+                "scenario_vector_as_of_date": "2026-06-09",
                 "artifacts": {
                     "assetScenarioSensitivity": "HedgeMate/outputs/processed/asset_scenario_sensitivity_hedgemate-prod.csv",
                     "recommendationStatusQa": "HedgeMate/outputs/reports/recommendation_status_qa_post_backtest_hedgemate-prod_backtest_gated.md",
                     "scenarioVector": "scenario_research/outputs/scenario_vectors/current_scenario_vector_prod.csv",
+                    "finalScenarioVector": "scenario_research/outputs/scenario_vectors/current_scenario_vector_final-prod-new.csv",
+                    "finalMarketState": "scenario_research/outputs/final/final_market_state_daily_final-prod-new.csv",
                 },
             }
 
@@ -1070,8 +1076,15 @@ class ActiveBundleTests(unittest.TestCase):
 
             payload = json.loads(scenario_manifest.read_text(encoding="utf-8"))
             self.assertEqual(payload["active_hedgemate_run"], "hedgemate-prod")
+            self.assertEqual(payload["active_scenario_run"], "scenario-prod")
+            self.assertEqual(payload["active_final_run"], "final-prod-new")
+            self.assertEqual(payload["active_backtest_run"], "backtest-prod")
+            self.assertEqual(payload["active_final_market_state_path"], "final/final_market_state_daily_final-prod-new.csv")
+            self.assertEqual(payload["active_final_scenario_vector_path"], "scenario_vectors/current_scenario_vector_final-prod-new.csv")
+            self.assertEqual(payload["final_market_state_as_of_date"], "2026-06-09")
             self.assertEqual(payload["legacy_hedgemate_run"], "20260310T000000000000-deadbeef")
             self.assertEqual(payload["active_hedgemate_manifest_basis"], "HedgeMate/outputs/latest_manifest.json")
+            self.assertEqual(payload["active_hedgemate_product_manifest_path"], "../../HedgeMate/outputs/latest_manifest.json")
             self.assertIn("post_backtest", payload["active_hedgemate_recommendation_status_qa_path"])
 
 

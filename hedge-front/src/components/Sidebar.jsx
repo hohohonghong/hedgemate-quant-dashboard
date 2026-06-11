@@ -10,7 +10,7 @@ export const Sidebar = () => {
   const { portfolios, currentUser, logout } = usePortfolios();
 
   const newCount = portfolios.filter(p => p.status === 'new').length;
-  const profileName = currentUser?.displayName || currentUser?.email || 'HedgeMate User';
+  const profileName = currentUser?.displayName || currentUser?.email || '사용자';
   const profileEmail = currentUser?.email || '';
   const userInitial = profileName.trim()?.charAt(0)?.toUpperCase() || 'U';
 

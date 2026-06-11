@@ -1,0 +1,21 @@
+[Unit]
+Description=HedgeMate backend dashboard API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hedgemate
+Group=hedgemate
+WorkingDirectory=/opt/hedgemate/current/hedgemate-beecast-fix
+ExecStart=/opt/hedgemate/current/hedgemate-beecast-fix/.venv/bin/python /opt/hedgemate/current/hedgemate-beecast-fix/HedgeMate/scripts/serve_dashboard.py --host 127.0.0.1 --port 8766
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

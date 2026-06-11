@@ -2,10 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { User, Bell, Database, Moon, Sun, Monitor, X } from 'lucide-react';
 import { Button } from '../components/Button';
 import { useUserProfile } from '../hooks/useUserProfile';
+import { usePortfolios } from '../context/PortfolioContext';
 import './Settings.css';
 
 export const Settings = () => {
-  const { profile, saveProfile } = useUserProfile();
+  const { currentUser } = usePortfolios();
+  const { profile: localProfile, saveProfile } = useUserProfile();
+  const profile = {
+    name: currentUser?.displayName || currentUser?.email || localProfile.name,
+    email: currentUser?.email || localProfile.email,
+    id: currentUser?.userId || currentUser?.id || '',
+  };
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => JSON.parse(localStorage.getItem('hm_notif')) ?? true);
   const [emailAlerts, setEmailAlerts] = useState(() => JSON.parse(localStorage.getItem('hm_email')) ?? false);
   const [theme, setTheme] = useState(() => localStorage.getItem('hm_theme') || 'dark');
@@ -30,6 +37,10 @@ export const Settings = () => {
   }, [profile, isModalOpen]);
 
   const handleProfileSave = () => {
+    if (currentUser) {
+      setIsModalOpen(false);
+      return;
+    }
     saveProfile({
       name: editName.trim() || profile.name,
       email: editEmail.trim() || profile.email,
@@ -61,13 +72,13 @@ export const Settings = () => {
             <span className="font-semibold">프로필 정보</span>
           </div>
           <div className="flex gap-6 items-center">
-            <div className="settings-avatar">{profile.name.charAt(0).toUpperCase()}</div>
+              <div className="settings-avatar">{profile.name.charAt(0).toUpperCase()}</div>
             <div className="flex-1">
               <div className="text-lg font-semibold">{profile.name}</div>
               <div className="text-sm text-secondary">{profile.email}</div>
-              <div className="text-xs text-accent-light mt-1">HedgeMate Pro Plan (갱신일: 2026-12-31)</div>
+              {profile.id && <div className="text-xs text-accent-light mt-1">계정 ID: {profile.id}</div>}
             </div>
-            <Button variant="outline" className="text-sm" onClick={handleOpenModal}>프로필 수정</Button>
+            {!currentUser && <Button variant="outline" className="text-sm" onClick={handleOpenModal}>프로필 수정</Button>}
           </div>
         </div>
 

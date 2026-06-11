@@ -7,6 +7,7 @@ import argparse
 import csv
 import hashlib
 import json
+import posixpath
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -637,22 +638,79 @@ def sync_scenario_manifest_with_product(
     qa_path = artifacts.get("recommendationStatusQa")
     action_plan_path = artifacts.get("hedgeActionPlan")
     attribution_path = artifacts.get("portfolioVulnerabilityAttribution")
+    active_bundle = manifest.get("active_bundle", {}) if isinstance(manifest.get("active_bundle"), dict) else {}
 
+    def product_path_for_scenario_manifest(raw_path: object) -> str | None:
+        if not raw_path:
+            return None
+        text = str(raw_path).replace("\\", "/")
+        if text.startswith("../../") or Path(text).is_absolute():
+            return text
+        if text.startswith("../HedgeMate/"):
+            return "../" + text
+        if text.startswith("HedgeMate/") or text.startswith("scenario_research/"):
+            return posixpath.relpath(text, "scenario_research/outputs")
+        return text
+
+    def scenario_output_rel(raw_path: object) -> str | None:
+        if not raw_path:
+            return None
+        text = str(raw_path).replace("\\", "/")
+        prefixes = ("scenario_research/outputs/", "../scenario_research/outputs/")
+        for prefix in prefixes:
+            if text.startswith(prefix):
+                return text.removeprefix(prefix)
+        return text
+
+    scenario_run = manifest.get("active_scenario_run") or active_bundle.get("scenario_run")
+    final_run = manifest.get("active_final_run") or active_bundle.get("final_market_state_run")
+    backtest_run = manifest.get("active_backtest_run") or active_bundle.get("backtest_run")
+    final_market_state = artifacts.get("finalMarketState")
+    scenario_confidence = artifacts.get("scenarioConfidence")
+    top_active_scenarios = artifacts.get("topActiveScenarios")
+    scenario_vector = artifacts.get("scenarioVector")
+    final_scenario_vector = artifacts.get("finalScenarioVector")
+    final_summary = artifacts.get("finalSummary") or (
+        f"scenario_research/outputs/reports/final_market_state_summary_{final_run}.md" if final_run else None
+    )
+    final_metadata = artifacts.get("finalMetadata")
+
+    scenario_updates = {
+        "active_final_run": final_run,
+        "active_final_market_state": Path(str(final_market_state)).name if final_market_state else None,
+        "active_final_market_state_path": scenario_output_rel(final_market_state),
+        "active_scenario_confidence": Path(str(scenario_confidence)).name if scenario_confidence else None,
+        "active_scenario_confidence_path": scenario_output_rel(scenario_confidence),
+        "active_top_active_scenarios": Path(str(top_active_scenarios)).name if top_active_scenarios else None,
+        "active_top_active_scenarios_path": scenario_output_rel(top_active_scenarios),
+        "active_final_summary": Path(str(final_summary)).name if final_summary else None,
+        "active_final_summary_path": scenario_output_rel(final_summary),
+        "active_scenario_vector": Path(str(scenario_vector)).name if scenario_vector else None,
+        "active_scenario_vector_path": scenario_output_rel(scenario_vector),
+        "active_scenario_run": scenario_run,
+        "active_backtest_run": backtest_run,
+        "final_market_state_as_of_date": manifest.get("scenario_vector_as_of_date"),
+        "active_final_scenario_vector": Path(str(final_scenario_vector)).name if final_scenario_vector else None,
+        "active_final_scenario_vector_path": scenario_output_rel(final_scenario_vector),
+        "active_final_metadata": Path(str(final_metadata)).name if final_metadata else None,
+        "active_final_metadata_path": scenario_output_rel(final_metadata),
+    }
+    existing.update({key: value for key, value in scenario_updates.items() if value is not None})
     existing.update(
         {
             "active_hedgemate_run": hedge_run,
             "active_hedgemate_summary": Path(summary_rel).name,
-            "active_hedgemate_summary_path": "../" + summary_rel if not str(summary_rel).startswith("../") else summary_rel,
+            "active_hedgemate_summary_path": product_path_for_scenario_manifest(summary_rel),
             "active_hedgemate_sensitivity": Path(str(sensitivity_path)).name,
-            "active_hedgemate_sensitivity_path": "../" + str(sensitivity_path) if not str(sensitivity_path).startswith("../") else str(sensitivity_path),
+            "active_hedgemate_sensitivity_path": product_path_for_scenario_manifest(sensitivity_path),
             "active_hedgemate_scenario_vector": artifacts.get("scenarioVector"),
             "active_hedgemate_recommendation_status_qa": Path(str(qa_path)).name if qa_path else None,
-            "active_hedgemate_recommendation_status_qa_path": "../" + str(qa_path) if qa_path and not str(qa_path).startswith("../") else qa_path,
+            "active_hedgemate_recommendation_status_qa_path": product_path_for_scenario_manifest(qa_path),
             "active_hedgemate_action_plan": Path(str(action_plan_path)).name if action_plan_path else None,
-            "active_hedgemate_action_plan_path": "../" + str(action_plan_path) if action_plan_path and not str(action_plan_path).startswith("../") else action_plan_path,
+            "active_hedgemate_action_plan_path": product_path_for_scenario_manifest(action_plan_path),
             "active_hedgemate_vulnerability_attribution": Path(str(attribution_path)).name if attribution_path else None,
-            "active_hedgemate_vulnerability_attribution_path": "../" + str(attribution_path) if attribution_path and not str(attribution_path).startswith("../") else attribution_path,
-            "active_hedgemate_product_manifest_path": "../HedgeMate/outputs/latest_manifest.json",
+            "active_hedgemate_vulnerability_attribution_path": product_path_for_scenario_manifest(attribution_path),
+            "active_hedgemate_product_manifest_path": "../../HedgeMate/outputs/latest_manifest.json",
             "active_hedgemate_manifest_basis": "HedgeMate/outputs/latest_manifest.json",
         }
     )

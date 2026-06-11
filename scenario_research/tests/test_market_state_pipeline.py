@@ -14,6 +14,9 @@ from scripts.run_market_state_pipeline import (
     apply_anchor_forward_fills,
     build_low_frequency_indicator_series,
     build_synthetic_basket_series,
+    choose_aligned_market_anchor,
+    missing_required_market_state_tickers,
+    should_refresh_market_state_cache,
 )
 
 
@@ -52,6 +55,35 @@ class MarketStatePipelineTest(unittest.TestCase):
 
         self.assertEqual(filled_map["KRW=X"], series_map["KRW=X"])
         self.assertEqual(fill_rows, [])
+
+    def test_required_market_state_tickers_cannot_be_silently_missing(self):
+        loaded_tickers = ["KRW=X", "SPY", "QQQ", "TLT", "HYG", "LQD", "GLD", "EWY", "FXI"]
+
+        self.assertEqual(
+            missing_required_market_state_tickers(loaded_tickers),
+            ["SOXX", "UUP", "^VIX"],
+        )
+
+    def test_required_market_state_cache_refreshes_when_stale(self):
+        self.assertTrue(should_refresh_market_state_cache("UUP", [("2026-06-09", 1.0)], "2026-06-10"))
+        self.assertFalse(should_refresh_market_state_cache("UUP", [("2026-06-10", 1.0)], "2026-06-10"))
+        self.assertFalse(should_refresh_market_state_cache("MSFT", [("2026-06-09", 1.0)], "2026-06-10"))
+
+    def test_anchor_prefers_latest_date_with_required_market_state_tickers(self):
+        anchor_date, metadata = choose_aligned_market_anchor(
+            {
+                "UUP": [("2026-06-09", 1.0)],
+                "SOXX": [("2026-06-09", 1.0)],
+                "^VIX": [("2026-06-09", 1.0)],
+                "SPY": [("2026-06-09", 1.0), ("2026-06-10", 1.0)],
+            },
+            min_coverage_ratio=0.5,
+            required_tickers={"UUP", "SOXX", "^VIX"},
+        )
+
+        self.assertEqual(anchor_date, "2026-06-09")
+        self.assertTrue(metadata["required_anchor_satisfied"])
+        self.assertEqual(metadata["required_tickers_missing_on_anchor_date"], [])
 
     def test_scenario_registry_contains_v2_scenarios(self):
         rows = build_scenario_registry_rows()

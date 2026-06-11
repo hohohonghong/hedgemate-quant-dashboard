@@ -77,6 +77,7 @@ const html = `<!doctype html>
   </head>
   <body>
     <div id="root"></div>
+    <script src="/hedgemate-runtime-config.js"></script>
     <script type="module" src="${toPublicPath(jsFile)}"></script>
   </body>
 </html>

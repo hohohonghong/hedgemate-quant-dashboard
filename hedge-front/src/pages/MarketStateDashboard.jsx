@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Database, ExternalLink, Newspaper, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
 import { Button } from '../components/Button';
-import { getScenarioDashboard, getScenarioRuns, getScenarioSensitivities, pollRunStatus, refreshIntradayNews, refreshMarketData } from '../services/hedgemateApi';
+import { getScenarioDashboard, getScenarioSensitivities, pollRunStatus, refreshIntradayNews, refreshMarketData } from '../services/hedgemateApi';
 import { buildMarketStateAssetGuide } from '../services/marketStateAssetGuide';
 import { ASSET_DATABASE } from '../utils/helpers';
 import './MarketStateDashboard.css';
@@ -75,27 +75,10 @@ const formatKstDateTimeShort = (value) => {
   return `${datePart} ${timePart}`;
 };
 
-const formatRunBasisLabel = (runId) => {
-  const match = String(runId || '').match(/(20\d{6})/);
-  if (!match) return '최신 산출물';
-  const raw = match[1];
-  return `${raw.slice(0, 4)}.${raw.slice(4, 6)}.${raw.slice(6, 8)}`;
-};
-
 const formatDateLabel = (value) => {
   const match = String(value || '').match(/(20\d{2})-?(\d{2})-?(\d{2})/);
   if (!match) return value || '-';
   return `${match[1]}.${match[2]}.${match[3]}`;
-};
-
-const marketBasisFromDashboard = (dashboard, selectedRun) => {
-  const freshness = dashboard?.marketStateFreshness || {};
-  const dailyPrimary = dashboard?.topActiveScenarios?.[0] || {};
-  return {
-    label: '정식 일간 기준',
-    value: formatDateLabel(freshness.dailyFinalDataAsOfDate || dailyPrimary.dataAsOfDate || dashboard?.dataAsOfDate) || formatRunBasisLabel(selectedRun),
-    title: selectedRun || 'latest',
-  };
 };
 
 const stateTone = (state) => {
@@ -282,7 +265,19 @@ const isDisplayableNowcast = (row) => {
 const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLeaders }) => {
   const dailyPrimary = activeScenarios[0] || {};
   const hasDailyPrimary = Boolean(dailyPrimary.scenario_code || dailyPrimary.scenario_name_ko || dailyPrimary.scenario_name);
-  const primary = {
+  const backendPrimary = dashboard.primaryMarketState || {};
+  const primary = backendPrimary.code || backendPrimary.nameKo ? {
+    source: backendPrimary.source || 'daily_final',
+    code: backendPrimary.code,
+    nameKo: backendPrimary.nameKo,
+    score: backendPrimary.score,
+    confidence: backendPrimary.confidence,
+    state: backendPrimary.state || (hasDailyPrimary ? 'ACTIVE' : '-'),
+    asOfKst: backendPrimary.asOfKst,
+    dataAsOfDate: backendPrimary.dataAsOfDate || dashboard.dataAsOfDate,
+    officialDailyDataAsOfDate: backendPrimary.officialDailyDataAsOfDate,
+    interpretationKo: backendPrimary.interpretationKo,
+  } : {
     source: 'daily_final',
     code: dailyPrimary.scenario_code,
     nameKo: scenarioLabel(dailyPrimary),
@@ -290,6 +285,7 @@ const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLea
     confidence: dailyPrimary.final_confidence ?? dailyPrimary.confidence,
     state: dailyPrimary.final_display_state || dailyPrimary.display_state || dailyPrimary.status || (hasDailyPrimary ? 'ACTIVE' : '-'),
     dataAsOfDate: dashboard.dataAsOfDate,
+    officialDailyDataAsOfDate: dashboard.dataAsOfDate,
     interpretationKo: dailyPrimary.market_interpretation_ko,
   };
   const intradayReferenceSignal = (nowcastLeaders || []).find(isDisplayableNowcast);
@@ -302,21 +298,26 @@ const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLea
   const intradayStatus = dashboard.intradayNowcastStatus || {};
   const freshness = dashboard.marketStateFreshness || {};
   const newsAdjustment = dashboard.intradayNewsScoreAdjustment || {};
-  const intradayReferenceSource = freshness.intradayNowcastAsOfKst
+  const intradayIsPrimary = primary.source === 'intraday_nowcast' && primary.asOfKst;
+  const intradayReferenceSource = primary.asOfKst
+    || freshness.intradayNowcastAsOfKst
     || intradayReferenceSignal?.asOfKst
     || intradayReferenceSignal?.latestTimestampKst
     || intradayStatus.latestTimestampKst;
   const intradayReferenceText = formatKstDateTime(intradayReferenceSource);
   const intradayShortReferenceText = formatKstDateTimeShort(intradayReferenceSource);
-  const currentDataReferenceText = formatDateLabel(freshness.dailyFinalDataAsOfDate || primary.dataAsOfDate || dashboard.dataAsOfDate || dashboard.asOfDate);
-  const dailyReferenceText = formatDateLabel(freshness.dailyFinalDataAsOfDate || primary.dataAsOfDate || dashboard.dataAsOfDate);
+  const primaryReferenceText = intradayIsPrimary
+    ? (intradayShortReferenceText || formatDateLabel(primary.dataAsOfDate || dashboard.asOfDate))
+    : formatDateLabel(freshness.dailyFinalDataAsOfDate || primary.dataAsOfDate || dashboard.dataAsOfDate || dashboard.asOfDate);
+  const dailyReferenceText = formatDateLabel(freshness.dailyFinalDataAsOfDate || primary.officialDailyDataAsOfDate || dashboard.dataAsOfDate);
+  const showDailyReferenceDate = Boolean(dailyReferenceText && !freshness.dailyFinalStale);
   const newsReferenceText = Array.isArray(newsAdjustment.newsDates) && newsAdjustment.newsDates.length
     ? newsAdjustment.newsDates.join(', ')
     : '뉴스 기준일 없음';
-  const referenceText = `정식 일간 기준 ${dailyReferenceText}`;
+  const referenceText = `${intradayIsPrimary ? '장중 nowcast 기준' : '정식 일간 기준'} ${primaryReferenceText}`;
   const summaryCopy = cleanText(primary.interpretationKo || primary.market_interpretation_ko)
-    || '현재 정식 일간 시장국면과 자산 민감도 데이터를 기준으로 시장 상태를 요약합니다.';
-  const fallbackNote = intradayStatus && intradayStatus.fresh === false
+    || '현재 시장국면과 자산 민감도 데이터를 기준으로 시장 상태를 요약합니다.';
+  const fallbackNote = !intradayIsPrimary && intradayStatus && intradayStatus.fresh === false
     ? '장중 nowcast가 최신 기준이 아니어서 정식 일간 국면을 표시합니다.'
     : '';
   const intradaySignalStatus = nowcastStatus(intradayReferenceSignal);
@@ -329,20 +330,20 @@ const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLea
         <div className="summary-title-row">
           <h2>{scenarioLabel(primary)}</h2>
           <span className={`state-chip ${stateTone(primaryState)}`}>{primaryState}</span>
-          <span className="state-chip neutral">정식 일간</span>
+          <span className="state-chip neutral">{intradayIsPrimary ? '장중 nowcast' : '정식 일간'}</span>
         </div>
         <p>{summaryCopy}</p>
         {fallbackNote && <p className="summary-basis-note warning">{fallbackNote}</p>}
         <div className="summary-basis-row">
-          <span>장중 nowcast: {intradayReferenceText || '최신 신호 없음'}</span>
-          <span>현재 데이터 기준: {currentDataReferenceText}</span>
+          <span>현재 기준: {intradayIsPrimary ? (intradayReferenceText || primaryReferenceText) : primaryReferenceText}</span>
+          {!intradayIsPrimary && <span>장중 nowcast: {intradayReferenceText || '최신 신호 없음'}</span>}
           <span>뉴스 기준: {newsReferenceText}</span>
         </div>
         {newsAdjustment.skipReason === 'news_date_mismatch' && (
           <p className="summary-basis-note warning">뉴스 날짜가 현재 표시 기준과 달라 점수에는 반영하지 않았습니다.</p>
         )}
         <div className="summary-chip-row">
-          <strong>정식 일간 국면 TOP 3{dailyReferenceText ? ` · 일간 데이터 ${dailyReferenceText}` : ''}:</strong>
+          <strong>정식 일간 국면 TOP 3{showDailyReferenceDate ? ` · 일간 데이터 ${dailyReferenceText}` : ''}:</strong>
           {activeScenarios.slice(0, 3).map((row) => (
             <span className={`summary-scenario-chip ${stateTone(row.final_display_state || row.display_state)}`} key={row.scenario_code}>
               <span>{scenarioLabel(row)}</span>
@@ -392,7 +393,7 @@ const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLea
 const NewsRiskOverlaySection = ({ items, status, isRefreshing, refreshStatus }) => {
   const rows = Array.isArray(items) ? items.slice(0, 5) : [];
   const fallbackText = status?.fallbackUsed
-    ? 'Gemini key 또는 외부 응답이 없어 검증된 fallback 근거를 표시 중입니다.'
+    ? '검증된 실시간 뉴스가 없어 Top5 뉴스를 표시하지 않습니다.'
     : 'Gemini Flash-Lite 구조화 결과를 JSON schema 검증 후 표시합니다.';
   const referenceText = status?.refreshWindowKst
     ? `기준 창 ${formatKstDateTime(status.refreshWindowKst)}`
@@ -424,7 +425,7 @@ const NewsRiskOverlaySection = ({ items, status, isRefreshing, refreshStatus }) 
             const summary = item.displaySummaryKo || item.evidenceSpan || '근거 문장이 없습니다.';
             const source = item.sourceKo || item.source || '-';
             const riskLabel = item.riskLabelKo || item.eventType || '시장 리스크';
-            const hasSourceLink = Boolean(url && !url.startsWith('fallback://'));
+            const hasSourceLink = /^https?:\/\//i.test(url);
             return (
               <article className="news-overlay-item" key={`${title || 'news'}-${index}`}>
                 <div className="news-overlay-rank">{index + 1}</div>
@@ -581,9 +582,11 @@ export const MarketStateDashboard = () => {
         setScenarioSensitivityPayload({ rows: [] });
         setAssetGuideError(sensitivityError.message || '자산 민감도 데이터를 불러오지 못했습니다.');
       }
+      return data;
     } catch (err) {
       if (err.name === 'AbortError') return;
       setError(err.message || '시장국면 진단 결과를 불러오지 못했습니다.');
+      return null;
     } finally {
       if (showLoading) setIsLoading(false);
     }
@@ -635,26 +638,35 @@ export const MarketStateDashboard = () => {
       setRefreshStatus(DAILY_REFRESH_CHECKING_MESSAGE);
       setError('');
       try {
-        const dailyRefreshJob = await refreshMarketData({
-          mode: 'market_data_only',
-          useLivePrices: true,
-          autoRefresh: true,
-        }, { signal: controller.signal, timeoutMs: 30 * 1000 });
+        const initialDashboard = await loadDashboard('', { signal: controller.signal });
         if (cancelled) return;
-        if (isAlreadyCurrentRefresh(dailyRefreshJob)) {
-          setRefreshStatus('');
-        } else if (dailyRefreshJob.status === 'completed') {
-          setRefreshStatus('');
-        } else if (dailyRefreshJob.jobId) {
-          setRefreshStatus(DAILY_REFRESH_RUNNING_MESSAGE);
-          const finalDailyStatus = await pollRunStatus(dailyRefreshJob.jobId, (status) => {
-            if (!cancelled) {
-              setRefreshStatus(status.currentStep || status.stage || DAILY_REFRESH_RUNNING_MESSAGE);
+        const latestRun = initialDashboard?.runId || '';
+        const freshness = initialDashboard?.marketStateFreshness || {};
+        const nowcastIsPrimaryAndFresh = freshness.primarySource === 'intraday_nowcast' && freshness.intradayFresh;
+        if (!nowcastIsPrimaryAndFresh) {
+          const dailyRefreshJob = await refreshMarketData({
+            mode: 'market_data_only',
+            useLivePrices: true,
+            autoRefresh: true,
+          }, { signal: controller.signal, timeoutMs: 30 * 1000 });
+          if (cancelled) return;
+          if (isAlreadyCurrentRefresh(dailyRefreshJob)) {
+            setRefreshStatus('');
+          } else if (dailyRefreshJob.status === 'completed') {
+            setRefreshStatus('');
+          } else if (dailyRefreshJob.jobId) {
+            setRefreshStatus(DAILY_REFRESH_RUNNING_MESSAGE);
+            const finalDailyStatus = await pollRunStatus(dailyRefreshJob.jobId, (status) => {
+              if (!cancelled) {
+                setRefreshStatus(status.currentStep || status.stage || DAILY_REFRESH_RUNNING_MESSAGE);
+              }
+            }, { signal: controller.signal, intervalMs: 3000, timeoutMs: 15 * 60 * 1000 });
+            if (finalDailyStatus.status !== 'completed' && finalDailyStatus.status !== 'skipped_latest') {
+              throw new Error(finalDailyStatus.error || '일간 시장국면 갱신이 완료되지 않았습니다.');
             }
-          }, { signal: controller.signal, intervalMs: 3000, timeoutMs: 15 * 60 * 1000 });
-          if (finalDailyStatus.status !== 'completed' && finalDailyStatus.status !== 'skipped_latest') {
-            throw new Error(finalDailyStatus.error || '일간 시장국면 갱신이 완료되지 않았습니다.');
           }
+        } else {
+          setRefreshStatus('');
         }
         setRefreshStatus(REFRESH_CHECKING_MESSAGE);
         const refreshJob = await refreshMarketData({
@@ -679,9 +691,6 @@ export const MarketStateDashboard = () => {
           }
           setRefreshStatus('');
         }
-        const runPayload = await getScenarioRuns({ signal: controller.signal });
-        if (cancelled) return;
-        const latestRun = runPayload.latestRunId || runPayload.runs?.[0] || '';
         await loadDashboard(latestRun, { signal: controller.signal });
         refreshNewsOverlay(latestRun, { signal: controller.signal });
       } catch (err) {
@@ -712,8 +721,6 @@ export const MarketStateDashboard = () => {
     () => buildMarketStateAssetGuide(dashboard || {}, scenarioSensitivityPayload || { rows: [] }),
     [dashboard, scenarioSensitivityPayload]
   );
-  const marketBasis = marketBasisFromDashboard(dashboard, selectedRun);
-
   return (
     <div className="market-state-page">
       <div className="report-header flex justify-between items-start">
@@ -725,10 +732,6 @@ export const MarketStateDashboard = () => {
           </p>
         </div>
         <div className="market-controls">
-          <div className="market-basis-chip" title={marketBasis.title}>
-            <span>{marketBasis.label}</span>
-            <strong>{marketBasis.value}</strong>
-          </div>
           <Button variant="secondary" onClick={() => loadDashboard(selectedRun)} disabled={isLoading || isRefreshing}>
             <RefreshCw size={14} className={isLoading ? 'spin-icon' : ''} /> 새로고침
           </Button>
@@ -783,7 +786,7 @@ export const MarketStateDashboard = () => {
                     <h2>현재 시장국면 기반 자산 배분 가이드</h2>
                   </div>
                   <span className="section-chip">
-                    {assetGuide.activeScenarios.length}개 국면 · {assetGuide.matchedRowCount}개 민감도 행
+                    {assetGuide.totalAssetCount || 0}개 자산 · {assetGuide.activeScenarios.length}개 국면 매칭 · {assetGuide.matchedRowCount}개 행
                   </span>
                 </div>
                 {assetGuideError && (

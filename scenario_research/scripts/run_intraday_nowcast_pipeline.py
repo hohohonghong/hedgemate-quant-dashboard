@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import ssl
 import time
 import urllib.parse
 import urllib.request
@@ -40,6 +41,20 @@ OUTPUT_RAW_DIR = SCENARIO_ROOT / "outputs" / "raw"
 OUTPUT_PROCESSED_DIR = SCENARIO_ROOT / "outputs" / "processed"
 OUTPUT_REPORT_DIR = SCENARIO_ROOT / "outputs" / "reports"
 OUTPUT_NOWCAST_VECTOR_DIR = SCENARIO_ROOT / "outputs" / "nowcast_vectors"
+_YAHOO_SSL_CONTEXT = None
+
+
+def yahoo_ssl_context():
+    global _YAHOO_SSL_CONTEXT
+    if _YAHOO_SSL_CONTEXT is not None:
+        return _YAHOO_SSL_CONTEXT
+    try:
+        import certifi
+
+        _YAHOO_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        _YAHOO_SSL_CONTEXT = ssl.create_default_context()
+    return _YAHOO_SSL_CONTEXT
 
 
 def now_utc() -> datetime:
@@ -84,7 +99,7 @@ def fetch_yahoo_intraday_chart(
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=30, context=yahoo_ssl_context()) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except Exception:
             if attempt == retries:

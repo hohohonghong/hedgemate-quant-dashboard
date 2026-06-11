@@ -224,6 +224,12 @@ def select_representative_candidates(
             continue
         if weights_from_snapshot(row):
             preferred.append(row)
+    if not preferred and not include_fail_gate:
+        return select_representative_candidates(
+            recommendation_rows,
+            limit=limit,
+            include_fail_gate=True,
+        )
     preferred.sort(
         key=lambda row: (
             status_rank.get(str(row.get("recommendation_status") or ""), 9),
@@ -1070,8 +1076,6 @@ def render_summary(
     rebalance_frequency: str = DEFAULT_REBALANCE_FREQUENCY,
     bootstrap_iterations: int = DEFAULT_BOOTSTRAP_ITERATIONS,
     bootstrap_ci_level: float = DEFAULT_BOOTSTRAP_CI_LEVEL,
-    historical_validation_missing: bool = False,
-    historical_validation_path: Path | None = None,
 ):
     status_counts = Counter(row.get("backtest_status") for row in rows)
     verdict_counts = Counter(row.get("verdict") for row in rows)
@@ -1141,13 +1145,6 @@ def render_summary(
             "- Insufficient-history cases are never counted as successful detection or backtest wins.",
         ]
     )
-    if historical_validation_missing:
-        lines.append(
-            "- Historical validation cases were not available in this deployment; "
-            "backtest evidence was not evaluated and downstream gates must keep recommendations review-only."
-        )
-        if historical_validation_path:
-            lines.append(f"- missing_historical_validation_path: `{historical_validation_path}`")
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -1171,9 +1168,7 @@ def parse_args(argv=None):
 
 def main(argv=None) -> int:
     args = parse_args(argv)
-    historical_validation_path = resolve_historical_validation_path(args.historical_validation_run_id)
-    historical_validation_missing = not historical_validation_path.exists()
-    cases = [] if historical_validation_missing else load_csv(historical_validation_path)
+    cases = load_csv(resolve_historical_validation_path(args.historical_validation_run_id))
     recommendation_rows = resolve_recommendation_rows(args.hedgemate_run_id, args.recommendation_scope)
     candidates = select_representative_candidates(
         recommendation_rows,
@@ -1182,7 +1177,7 @@ def main(argv=None) -> int:
     )
     base_weights = pct_weights_from_rows(load_csv(args.portfolio_input))
     raw_market_path = RAW_DIR / f"raw_market_daily_{args.data_version}.csv"
-    return_maps = return_maps_from_prices(load_price_maps(raw_market_path)) if cases else {}
+    return_maps = return_maps_from_prices(load_price_maps(raw_market_path))
 
     rows = []
     for case in cases:
@@ -1232,8 +1227,6 @@ def main(argv=None) -> int:
             rebalance_frequency=args.rebalance_frequency,
             bootstrap_iterations=args.bootstrap_iterations,
             bootstrap_ci_level=args.bootstrap_ci_level,
-            historical_validation_missing=historical_validation_missing,
-            historical_validation_path=historical_validation_path,
         ),
         encoding="utf-8",
     )
@@ -1253,8 +1246,6 @@ def main(argv=None) -> int:
                 "implementation_cost_model": "one_time_formation_turnover_cost",
                 "recurring_rebalance_cost_model": "scheduled_turnover_cost_when_monthly_or_daily",
                 "historical_validation_run_id": args.historical_validation_run_id,
-                "historical_validation_path": str(historical_validation_path),
-                "historical_validation_missing": historical_validation_missing,
                 "hedgemate_run_id": args.hedgemate_run_id,
                 "raw_market_path": str(raw_market_path),
                 "backtest_csv": str(output_csv),

@@ -1,4 +1,5 @@
-const rawApiUrl = import.meta.env?.VITE_HEDGEMATE_API_URL;
+const runtimeApiUrl = globalThis.__HEDGEMATE_API_URL__;
+const rawApiUrl = runtimeApiUrl || import.meta.env?.VITE_HEDGEMATE_API_URL;
 
 const normalizeApiBase = (value) => {
   if (!value) return '/api';

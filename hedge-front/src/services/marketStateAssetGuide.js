@@ -133,12 +133,14 @@ const sortReduceAssets = (a, b) => (
 export const buildMarketStateAssetGuide = (dashboard = {}, sensitivityPayload = {}) => {
   const activeScenarios = uniqueScenarioRows(dashboard);
   const sensitivityRows = Array.isArray(sensitivityPayload?.rows) ? sensitivityPayload.rows : [];
+  const totalAssetCount = new Set(sensitivityRows.map(normalizeTicker).filter(Boolean)).size;
   if (!activeScenarios.length || !sensitivityRows.length) {
     return {
       activeScenarios,
       interestAssets: [],
       reduceAssets: [],
       matchedRowCount: 0,
+      totalAssetCount,
       totalSensitivityRows: sensitivityRows.length,
       emptyMessage: MARKET_STATE_ASSET_GUIDE_EMPTY_MESSAGE,
     };
@@ -215,6 +217,7 @@ export const buildMarketStateAssetGuide = (dashboard = {}, sensitivityPayload = 
     interestAssets,
     reduceAssets,
     matchedRowCount,
+    totalAssetCount,
     totalSensitivityRows: sensitivityRows.length,
     emptyMessage: interestAssets.length || reduceAssets.length ? '' : MARKET_STATE_ASSET_GUIDE_EMPTY_MESSAGE,
   };

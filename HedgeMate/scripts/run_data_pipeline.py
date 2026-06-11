@@ -6,7 +6,9 @@ import html
 import itertools
 import json
 import math
+import posixpath
 import random
+import ssl
 import statistics
 import sys
 import time
@@ -74,6 +76,7 @@ DEFAULT_ACTION_BOOTSTRAP_ITERATIONS = 60
 GATE_STRESS_IMPROVE_TOLERANCE = 0.0001
 DEFAULT_MAX_FX_LAG_DAYS = 7
 DEFAULT_ANNUAL_RISK_FREE_RATE = 0.03
+_YAHOO_SSL_CONTEXT = None
 
 HEDGE_V1_CANDIDATES = {
     "TLT",
@@ -192,6 +195,19 @@ def find_latest_cached_snapshot(prefix, directory):
     stem = latest.stem
     version = stem[len(prefix) + 1:] if stem.startswith(f"{prefix}_") else None
     return latest, version
+
+
+def yahoo_ssl_context():
+    global _YAHOO_SSL_CONTEXT
+    if _YAHOO_SSL_CONTEXT is not None:
+        return _YAHOO_SSL_CONTEXT
+    try:
+        import certifi
+
+        _YAHOO_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        _YAHOO_SSL_CONTEXT = ssl.create_default_context()
+    return _YAHOO_SSL_CONTEXT
 
 
 def read_scenario_vector_rows(path):
@@ -444,7 +460,7 @@ def fetch_yahoo_chart(ticker, period1, period2, retries=5):
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=30, context=yahoo_ssl_context()) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
                 result = payload.get("chart", {}).get("result", [])
                 if not result:
@@ -559,9 +575,13 @@ def scenario_manifest_path(raw_path):
     if not raw_path:
         return None
     text = str(raw_path).replace("\\", "/")
-    if text.startswith("../") or Path(text).is_absolute():
+    if text.startswith("../../") or Path(text).is_absolute():
         return text
-    return "../" + text
+    if text.startswith("../HedgeMate/"):
+        return "../" + text
+    if text.startswith("HedgeMate/") or text.startswith("scenario_research/"):
+        return posixpath.relpath(text, "scenario_research/outputs")
+    return text
 
 
 def artifact_name(raw_path):
@@ -602,7 +622,7 @@ def sync_product_active_bundle_fields(manifest, product_manifest_path=None):
             "active_hedgemate_scenario_vector": artifacts.get("scenarioVector"),
             "active_hedgemate_recommendation_status_qa": artifact_name(qa_path),
             "active_hedgemate_recommendation_status_qa_path": scenario_manifest_path(qa_path),
-            "active_hedgemate_product_manifest_path": "../HedgeMate/outputs/latest_manifest.json",
+            "active_hedgemate_product_manifest_path": "../../HedgeMate/outputs/latest_manifest.json",
             "active_hedgemate_manifest_basis": "HedgeMate/outputs/latest_manifest.json",
         }
     )
@@ -1071,6 +1091,14 @@ def load_or_fetch_fx(period1, period2, run_id, ingested_at):
 
     if fx_rows:
         save_fx_raw(fx_file, fx_rows)
+        return fx_file, fx_rows, fx_rate_map, used_cached
+
+    fallback_file, _ = find_latest_cached_snapshot("raw_fx_daily", OUTPUT_RAW_DIR)
+    if fallback_file is not None and fallback_file != fx_file:
+        fallback_rows, fallback_rate_map = load_cached_fx_raw(fallback_file)
+        if fallback_rate_map:
+            print(f"[WARN] FX fetch returned no rows for {run_id}; using cached FX snapshot {fallback_file.name}")
+            return fallback_file, fallback_rows, fallback_rate_map, True
     return fx_file, fx_rows, fx_rate_map, used_cached
 
 
@@ -6371,9 +6399,9 @@ def main(argv=None):
         {
             "active_hedgemate_run": run_id,
             "active_hedgemate_summary": asset_scenario_sensitivity_summary_md.name,
-            "active_hedgemate_summary_path": f"../HedgeMate/outputs/reports/{asset_scenario_sensitivity_summary_md.name}",
+            "active_hedgemate_summary_path": f"../../HedgeMate/outputs/reports/{asset_scenario_sensitivity_summary_md.name}",
             "active_hedgemate_sensitivity": asset_scenario_sensitivity_csv.name,
-            "active_hedgemate_sensitivity_path": f"../HedgeMate/outputs/processed/{asset_scenario_sensitivity_csv.name}",
+            "active_hedgemate_sensitivity_path": f"../../HedgeMate/outputs/processed/{asset_scenario_sensitivity_csv.name}",
             "active_hedgemate_scenario_vector": scenario_context.get("path"),
             "active_hedgemate_vulnerability_attribution": hedge_action_artifacts["portfolio_vulnerability_attribution"].name,
             "active_hedgemate_vulnerability_summary": hedge_action_artifacts["portfolio_vulnerability_summary"].name,

@@ -34,7 +34,11 @@ class ScenarioManifestSyncTests(unittest.TestCase):
             self.assertEqual(updated["active_hedgemate_run"], "hedgemate-prod")
             self.assertEqual(updated["legacy_hedgemate_run"], "20260310T000000000000-deadbeef")
             self.assertEqual(updated["active_hedgemate_manifest_basis"], "HedgeMate/outputs/latest_manifest.json")
-            self.assertEqual(updated["active_hedgemate_product_manifest_path"], "../HedgeMate/outputs/latest_manifest.json")
+            self.assertEqual(updated["active_hedgemate_product_manifest_path"], "../../HedgeMate/outputs/latest_manifest.json")
+            self.assertEqual(
+                updated["active_hedgemate_sensitivity_path"],
+                "../../HedgeMate/outputs/processed/asset_scenario_sensitivity_hedgemate-prod.csv",
+            )
             self.assertIn("post_backtest", updated["active_hedgemate_recommendation_status_qa_path"])
 
     def test_scenario_pipeline_manifest_update_preserves_product_active_bundle(self):

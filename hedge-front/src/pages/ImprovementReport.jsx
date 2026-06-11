@@ -264,6 +264,9 @@ export const ImprovementReport = () => {
   const previewBlockReasons = portfolioPreview?.errors || [];
   const freshness = dashboardPayload?.dataFreshness || {};
   const marketDataConfirmedFresh = freshness.marketDataFresh === true || reportModel?.portfolioMatchDetail?.marketDataFresh === true;
+  const showMarketDataAutoStatus = Boolean(marketDataAutoStatus.message)
+    && !runState.running
+    && (!showMatchedResults || marketDataAutoStatus.level === 'warning');
   const staleAnalysisBundle = Boolean(
     selectedPortfolio
     && !previewBlocksAnalysis
@@ -834,7 +837,7 @@ export const ImprovementReport = () => {
         </div>
       </div>
 
-      {marketDataAutoStatus.message && (
+      {showMarketDataAutoStatus && (
         <div className={`status-strip compact ${marketDataAutoStatus.level === 'warning' ? 'warning' : ''} mt-4`}>
           {marketDataAutoStatus.running ? <Loader2 size={14} className="spin-icon" /> : (
             marketDataAutoStatus.level === 'warning' ? <AlertCircle size={14} /> : <Shield size={14} />
@@ -857,7 +860,7 @@ export const ImprovementReport = () => {
         </div>
       )}
 
-      {runState.stage && (
+      {runState.stage && !runState.running && (
         <div className="status-strip mt-4">
           <Loader2 size={14} className={runState.running ? 'spin-icon' : ''} />
           <span>{runState.stage}</span>

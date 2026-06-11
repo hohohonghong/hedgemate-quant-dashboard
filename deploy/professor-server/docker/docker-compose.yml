@@ -1,0 +1,23 @@
+services:
+  backend:
+    build:
+      context: ../../..
+      dockerfile: deploy/professor-server/docker/Dockerfile.backend
+    restart: unless-stopped
+    volumes:
+      - ../../../.secrets:/app/.secrets:ro
+      - ../../../HedgeMate/outputs:/app/HedgeMate/outputs
+      - ../../../HedgeMate/inputs:/app/HedgeMate/inputs
+      - ../../../scenario_research/outputs:/app/scenario_research/outputs
+    expose:
+      - "8766"
+
+  frontend:
+    build:
+      context: ../../..
+      dockerfile: deploy/professor-server/docker/Dockerfile.frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"

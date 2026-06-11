@@ -1,0 +1,10 @@
+.git
+.secrets
+.venv
+venv
+__pycache__
+*.pyc
+hedge-front/node_modules
+hedge-front/.vite
+npm-debug.log
+.DS_Store

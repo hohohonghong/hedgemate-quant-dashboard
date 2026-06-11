@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -65,6 +66,7 @@ GEMINI_INPUT_MIN = 5
 GEMINI_INPUT_MAX = 10
 UI_TOP_LIMIT = 5
 MAX_CANDIDATE_AGE_HOURS = 72
+_HTTPS_SSL_CONTEXT = None
 
 SOURCE_LABEL_KO = {
     "Fallback Macro Fixture": "거시 리스크 점검",
@@ -85,6 +87,18 @@ EVENT_TYPE_LABEL_KO = {
     "policy": "정책",
     "risk_sentiment": "위험심리",
 }
+
+
+def https_ssl_context() -> ssl.SSLContext:
+    global _HTTPS_SSL_CONTEXT
+    if _HTTPS_SSL_CONTEXT is None:
+        try:
+            import certifi
+
+            _HTTPS_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            _HTTPS_SSL_CONTEXT = ssl.create_default_context()
+    return _HTTPS_SSL_CONTEXT
 
 DIRECTION_LABEL_KO = {
     "rate_up": "금리 상승 압력",
@@ -476,7 +490,7 @@ def request_json(url: str, headers: dict[str, str] | None = None, timeout_second
         },
         method="GET",
     )
-    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+    with urllib.request.urlopen(request, timeout=timeout_seconds, context=https_ssl_context()) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -490,7 +504,7 @@ def request_text(url: str, headers: dict[str, str] | None = None, timeout_second
         },
         method="GET",
     )
-    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+    with urllib.request.urlopen(request, timeout=timeout_seconds, context=https_ssl_context()) as response:
         return response.read().decode("utf-8", errors="replace")
 
 
@@ -1058,7 +1072,7 @@ def post_gemini_json(
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+    with urllib.request.urlopen(request, timeout=timeout_seconds, context=https_ssl_context()) as response:
         return json.loads(response.read().decode("utf-8"))
 
 

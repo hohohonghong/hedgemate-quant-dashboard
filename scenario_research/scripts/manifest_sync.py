@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import posixpath
 from pathlib import Path
 
 
@@ -24,9 +25,13 @@ def _scenario_manifest_path(raw_path: object) -> str | None:
     if not raw_path:
         return None
     text = str(raw_path).replace("\\", "/")
-    if text.startswith("../") or Path(text).is_absolute():
+    if text.startswith("../../") or Path(text).is_absolute():
         return text
-    return "../" + text
+    if text.startswith("../HedgeMate/"):
+        return "../" + text
+    if text.startswith("HedgeMate/") or text.startswith("scenario_research/"):
+        return posixpath.relpath(text, "scenario_research/outputs")
+    return text
 
 
 def _artifact_name(raw_path: object) -> str | None:
@@ -82,7 +87,7 @@ def sync_active_hedgemate_from_product_manifest(
             "active_hedgemate_scenario_vector": artifacts.get("scenarioVector"),
             "active_hedgemate_recommendation_status_qa": _artifact_name(qa_path),
             "active_hedgemate_recommendation_status_qa_path": _scenario_manifest_path(qa_path),
-            "active_hedgemate_product_manifest_path": "../HedgeMate/outputs/latest_manifest.json",
+            "active_hedgemate_product_manifest_path": "../../HedgeMate/outputs/latest_manifest.json",
             "active_hedgemate_manifest_basis": "HedgeMate/outputs/latest_manifest.json",
         }
     )

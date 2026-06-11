@@ -3,6 +3,7 @@ import argparse
 import csv
 import json
 import math
+import ssl
 import time
 import urllib.parse
 import urllib.request
@@ -72,6 +73,62 @@ EXTERNAL_INDICATOR_INPUTS = [
     HEDGEMATE_ROOT / "inputs" / "market_state_external_indicators.csv",
 ]
 EVENT_OVERLAY_DIR = SCENARIO_ROOT / "outputs" / "events"
+_YAHOO_SSL_CONTEXT = None
+REQUIRED_MARKET_STATE_TICKERS = {
+    FX_TICKER,
+    "SPY",
+    "QQQ",
+    "TLT",
+    "HYG",
+    "LQD",
+    "GLD",
+    "EWY",
+    "UUP",
+    "FXI",
+    "SOXX",
+    "^VIX",
+}
+
+
+def yahoo_ssl_context():
+    global _YAHOO_SSL_CONTEXT
+    if _YAHOO_SSL_CONTEXT is not None:
+        return _YAHOO_SSL_CONTEXT
+    try:
+        import certifi
+
+        _YAHOO_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        _YAHOO_SSL_CONTEXT = ssl.create_default_context()
+    return _YAHOO_SSL_CONTEXT
+
+
+def missing_required_market_state_tickers(loaded_tickers):
+    loaded = {str(ticker or "").strip() for ticker in loaded_tickers}
+    return sorted(REQUIRED_MARKET_STATE_TICKERS - loaded)
+
+
+def latest_series_date(series):
+    dates = [str(row[0]) for row in series or [] if row and row[0]]
+    return max(dates) if dates else None
+
+
+def merge_price_series(existing, fetched):
+    values = {}
+    for date_str, close in existing or []:
+        values[str(date_str)] = close
+    for date_str, close in fetched or []:
+        values[str(date_str)] = close
+    return sorted(values.items(), key=lambda item: item[0])
+
+
+def should_refresh_market_state_cache(ticker, series, target_latest_date):
+    if not series:
+        return True
+    if ticker not in REQUIRED_MARKET_STATE_TICKERS:
+        return False
+    latest_date = latest_series_date(series)
+    return bool(target_latest_date and latest_date and latest_date < target_latest_date)
 
 
 def now_utc():
@@ -190,7 +247,7 @@ def fetch_yahoo_chart(ticker, period1, period2, retries=5):
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=30, context=yahoo_ssl_context()) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except Exception:
             if attempt == retries:
@@ -648,9 +705,10 @@ def save_market_state_raw(raw_file, raw_rows):
     write_csv(raw_file, columns, sorted(raw_rows, key=lambda row: (row["ticker"], row["date"])))
 
 
-def choose_aligned_market_anchor(series_map, min_coverage_ratio=MIN_TICKER_COVERAGE_RATIO):
+def choose_aligned_market_anchor(series_map, min_coverage_ratio=MIN_TICKER_COVERAGE_RATIO, required_tickers=None):
     dates_to_tickers = defaultdict(set)
     last_date_by_ticker = {}
+    required_tickers = {str(ticker or "").strip() for ticker in (required_tickers or []) if str(ticker or "").strip()}
 
     for ticker, series in series_map.items():
         if not series:
@@ -662,8 +720,10 @@ def choose_aligned_market_anchor(series_map, min_coverage_ratio=MIN_TICKER_COVER
     total_tickers = len(last_date_by_ticker)
     if total_tickers == 0:
         return None, {
-            "alignment_mode": "latest_date_with_min_ticker_coverage",
+            "alignment_mode": "latest_date_with_min_ticker_coverage_and_required_tickers",
             "min_ticker_coverage_ratio": min_coverage_ratio,
+            "required_tickers": sorted(required_tickers),
+            "required_anchor_enforced": bool(required_tickers),
             "total_tickers": 0,
             "anchor_date": None,
             "anchor_ticker_count": 0,
@@ -678,26 +738,41 @@ def choose_aligned_market_anchor(series_map, min_coverage_ratio=MIN_TICKER_COVER
         for date_str, tickers in dates_to_tickers.items()
         if len(tickers) >= min_ticker_count
     )
+    required_candidate_dates = [
+        date_str
+        for date_str in candidate_dates
+        if not required_tickers or required_tickers.issubset(dates_to_tickers.get(date_str, set()))
+    ]
 
-    if candidate_dates:
+    if required_candidate_dates:
+        anchor_date = required_candidate_dates[-1]
+        required_anchor_satisfied = True
+    elif candidate_dates:
         anchor_date = candidate_dates[-1]
+        required_anchor_satisfied = not required_tickers
     else:
         anchor_date = max(
             dates_to_tickers.keys(),
             key=lambda date_str: (len(dates_to_tickers[date_str]), date_str),
         )
+        required_anchor_satisfied = not required_tickers or required_tickers.issubset(dates_to_tickers.get(anchor_date, set()))
 
     anchor_tickers = sorted(dates_to_tickers.get(anchor_date, set()))
     anchor_missing_tickers = sorted(set(last_date_by_ticker) - set(anchor_tickers))
+    required_missing_on_anchor = sorted(required_tickers - set(anchor_tickers))
     tickers_after_anchor_date = {
         ticker: last_date
         for ticker, last_date in sorted(last_date_by_ticker.items())
         if anchor_date is not None and last_date > anchor_date
     }
     metadata = {
-        "alignment_mode": "latest_date_with_min_ticker_coverage",
+        "alignment_mode": "latest_date_with_min_ticker_coverage_and_required_tickers",
         "min_ticker_coverage_ratio": min_coverage_ratio,
         "min_ticker_count": min_ticker_count,
+        "required_tickers": sorted(required_tickers),
+        "required_anchor_enforced": bool(required_tickers),
+        "required_anchor_satisfied": required_anchor_satisfied,
+        "required_tickers_missing_on_anchor_date": required_missing_on_anchor,
         "total_tickers": total_tickers,
         "anchor_date": anchor_date,
         "anchor_ticker_count": len(anchor_tickers),
@@ -726,6 +801,13 @@ def build_market_state_raw(period1, period2, data_version, ingested_at, reuse_sh
         load_shared_market_universe(shared_market_file) if reuse_shared_cache else ({}, {})
     )
     shared_fx_map = load_shared_fx_map(shared_fx_file) if reuse_shared_cache else {}
+    shared_reference_dates = [
+        latest_series_date(series)
+        for series in list(shared_market_series.values()) + list(shared_benchmark_series.values())
+    ]
+    if shared_fx_map:
+        shared_reference_dates.append(max(shared_fx_map))
+    target_latest_date = max((date_str for date_str in shared_reference_dates if date_str), default=None)
 
     unaligned_series_map = {}
     for spec in MARKET_STATE_TICKER_SPECS:
@@ -752,11 +834,17 @@ def build_market_state_raw(period1, period2, data_version, ingested_at, reuse_sh
             source = "hedgemate_benchmark_raw"
         else:
             series = list(cached_series.get(ticker, []))
-            if not series:
+            if should_refresh_market_state_cache(ticker, series, target_latest_date):
                 fetched = fetch_yahoo_chart(ticker, period1, period2)
                 time.sleep(0.4)
-                series = [(row["date"], row["adj_close"]) for row in fetched if row.get("adj_close") is not None and row.get("adj_close") > 0]
-                source = "yahoo"
+                fetched_series = [
+                    (row["date"], row["adj_close"])
+                    for row in fetched
+                    if row.get("adj_close") is not None and row.get("adj_close") > 0
+                ]
+                if fetched_series:
+                    series = merge_price_series(series, fetched_series)
+                    source = "yahoo"
 
         if not series:
             continue
@@ -764,17 +852,32 @@ def build_market_state_raw(period1, period2, data_version, ingested_at, reuse_sh
         unaligned_series_map[ticker] = [(date_str, close, source) for date_str, close in series]
 
     anchor_date, anchor_metadata = choose_aligned_market_anchor(
-        {ticker: [(date_str, close) for date_str, close, _ in series] for ticker, series in unaligned_series_map.items()}
+        {ticker: [(date_str, close) for date_str, close, _ in series] for ticker, series in unaligned_series_map.items()},
+        required_tickers=REQUIRED_MARKET_STATE_TICKERS,
     )
     unaligned_series_map, anchor_forward_fills = apply_anchor_forward_fills(unaligned_series_map, anchor_date)
     anchor_date, anchor_metadata = choose_aligned_market_anchor(
-        {ticker: [(date_str, close) for date_str, close, _ in series] for ticker, series in unaligned_series_map.items()}
+        {ticker: [(date_str, close) for date_str, close, _ in series] for ticker, series in unaligned_series_map.items()},
+        required_tickers=REQUIRED_MARKET_STATE_TICKERS,
     )
     expected_tickers = sorted(spec_map.keys())
     loaded_tickers = sorted(unaligned_series_map.keys())
     missing_tickers_total = sorted(set(expected_tickers) - set(loaded_tickers))
+    missing_required_tickers = missing_required_market_state_tickers(loaded_tickers)
     anchor_missing_tickers = anchor_metadata.get("tickers_missing_on_anchor_date", [])
+    missing_required_on_anchor = missing_required_market_state_tickers(anchor_metadata.get("tickers_on_anchor_date", []))
     data_quality_status = "OK" if not missing_tickers_total and not anchor_missing_tickers else "DEGRADED"
+    if missing_required_tickers:
+        raise RuntimeError(
+            "Required market-state tickers missing from raw input: "
+            + ", ".join(missing_required_tickers)
+        )
+    if missing_required_on_anchor:
+        raise RuntimeError(
+            "Required market-state tickers missing on anchor date "
+            f"{anchor_metadata.get('anchor_date')}: "
+            + ", ".join(missing_required_on_anchor)
+        )
     anchor_metadata.update(
         {
             "expected_ticker_count": len(expected_tickers),
@@ -782,6 +885,8 @@ def build_market_state_raw(period1, period2, data_version, ingested_at, reuse_sh
             "loaded_ticker_count": len(loaded_tickers),
             "loaded_tickers": loaded_tickers,
             "missing_tickers_total": missing_tickers_total,
+            "missing_required_tickers": missing_required_tickers,
+            "missing_required_tickers_on_anchor_date": missing_required_on_anchor,
             "anchor_forward_fills": anchor_forward_fills,
             "data_quality_status": data_quality_status,
             "universe_breadth_source_ticker_count": len(universe_series_map),

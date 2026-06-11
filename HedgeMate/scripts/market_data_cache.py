@@ -8,6 +8,7 @@ be judged from the latest available market date.
 
 import csv
 import json
+import ssl
 import time
 import urllib.parse
 import urllib.request
@@ -31,6 +32,20 @@ RAW_MARKET_COLUMNS = [
     "currency",
     "ingested_at",
 ]
+_YAHOO_SSL_CONTEXT = None
+
+
+def yahoo_ssl_context():
+    global _YAHOO_SSL_CONTEXT
+    if _YAHOO_SSL_CONTEXT is not None:
+        return _YAHOO_SSL_CONTEXT
+    try:
+        import certifi
+
+        _YAHOO_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        _YAHOO_SSL_CONTEXT = ssl.create_default_context()
+    return _YAHOO_SSL_CONTEXT
 
 
 def parse_float(value):
@@ -148,7 +163,7 @@ def fetch_yahoo_chart(ticker, start_date, end_date, retries=3):
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=30, context=yahoo_ssl_context()) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
                 result = payload.get("chart", {}).get("result", [])
                 if not result:
@@ -463,7 +478,7 @@ def incremental_update_raw_market_data(
         meta = universe_by_ticker[ticker]
         for raw in fetched_rows:
             row_date = str(raw.get("date") or "").strip()
-            if not row_date or row_date <= last_date or row_date > target_latest_date:
+            if not row_date or row_date <= last_date:
                 continue
             row = {
                 "date": row_date,

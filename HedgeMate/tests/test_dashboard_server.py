@@ -10,6 +10,7 @@ import unittest
 import urllib.error
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -129,15 +130,20 @@ class DashboardServerTests(unittest.TestCase):
         serve_dashboard.SCENARIO_NEWS_INTRADAY_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "news_intraday"
         serve_dashboard.SCENARIO_VALIDATION_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "validation"
 
-    def test_deployment_start_backend_disables_startup_refresh_by_default(self):
+    def test_deployment_start_backend_uses_real_dashboard_server_and_immediate_scheduler(self):
         app = self._load_deployment_app()
 
         with mock.patch.object(app.subprocess, "Popen") as popen, \
-             mock.patch.dict(app.os.environ, {}, clear=True):
+             mock.patch.dict(app.os.environ, {"HEDGEMATE_SERVER_SAFE_MODE": "1"}, clear=True):
             app.start_backend()
 
         command = popen.call_args.args[0]
-        self.assertIn("--no-startup-refresh", command)
+        env = popen.call_args.kwargs["env"]
+        self.assertIn("scripts/serve_dashboard.py", command)
+        self.assertNotIn("scripts/serve_dashboard_beecast.py", command)
+        self.assertNotIn("--no-scheduler", command)
+        self.assertNotIn("HEDGEMATE_SERVER_SAFE_MODE", env)
+        self.assertEqual(env["HEDGEMATE_SCHEDULER_INITIAL_DELAY_SECONDS"], "0")
 
     def test_deployment_start_backend_keeps_startup_refresh_when_explicitly_enabled(self):
         app = self._load_deployment_app()
@@ -158,6 +164,120 @@ class DashboardServerTests(unittest.TestCase):
 
         command = popen.call_args.args[0]
         self.assertIn("--no-startup-refresh", command)
+
+    def test_deployment_frontend_only_mode_uses_external_api_without_backend(self):
+        app = self._load_deployment_app()
+        external_api = "https://hedgemate-local-api.example.com"
+
+        with mock.patch.dict(app.os.environ, {"HEDGEMATE_EXTERNAL_API_BASE": external_api}, clear=True), \
+             mock.patch.object(app, "log_startup_diagnostics"), \
+             mock.patch.object(app, "start_backend") as start_backend, \
+             mock.patch.object(app.subprocess, "run") as run:
+            app.main()
+
+        start_backend.assert_not_called()
+        command = run.call_args.args[0]
+        self.assertIn("--api-base", command)
+        self.assertIn("--frontend-api-base", command)
+        self.assertIn(external_api, command)
+
+    def test_analysis_cache_hit_does_not_overwrite_active_manifest(self):
+        previous_root = serve_dashboard.ROOT
+        previous_cache_dir = serve_dashboard.ANALYSIS_CACHE_DIR
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "HedgeMate"
+            serve_dashboard.ROOT = root
+            serve_dashboard.ANALYSIS_CACHE_DIR = root / "outputs" / "analysis_cache"
+            active_path = root / "outputs" / "latest_manifest.json"
+            active_path.parent.mkdir(parents=True, exist_ok=True)
+            active_manifest = {
+                "active_hedgemate_run": "current-run",
+                "active_bundle": {"hedgemate_run": "current-run"},
+            }
+            active_path.write_text(json.dumps(active_manifest), encoding="utf-8")
+
+            cache_manifest_path = serve_dashboard.active_analysis_cache_dir() / "old-cache-run.json"
+            cache_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_manifest_path.write_text(
+                json.dumps(
+                    {
+                        "active_hedgemate_run": "old-cache-run",
+                        "active_bundle": {"hedgemate_run": "old-cache-run"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            serve_dashboard.write_analysis_cache_index(
+                {
+                    "version": "analysis_cache_v1",
+                    "entries": {
+                        "cache-key": {
+                            "runId": "old-cache-run",
+                            "cacheKey": "cache-key",
+                            "manifestPath": serve_dashboard.portable_analysis_manifest_path(cache_manifest_path),
+                            "portfolioInputSha256": "sha",
+                            "portfolioFingerprintHash": "fingerprint",
+                            "portfolioTickers": ["SPY"],
+                            "generatedAtUtc": "2026-06-11T00:00:00+00:00",
+                        }
+                    },
+                }
+            )
+
+            def fail_if_runner_called(*args, **kwargs):
+                raise AssertionError("cache hit should not start a pipeline runner")
+
+            try:
+                job = serve_dashboard.launch_run_job(
+                    {
+                        "_prepared_request": True,
+                        "jobId": "job-cache-hit",
+                        "runId": "new-request-run",
+                        "cmd": ["unused"],
+                        "analysisCacheKey": "cache-key",
+                    },
+                    runner=fail_if_runner_called,
+                )
+            finally:
+                serve_dashboard.ROOT = previous_root
+                serve_dashboard.ANALYSIS_CACHE_DIR = previous_cache_dir
+            after = json.loads(active_path.read_text(encoding="utf-8"))
+            self.assertEqual(after["active_hedgemate_run"], "current-run")
+
+        self.assertEqual(job["status"], "completed")
+        self.assertTrue(job["result"]["cached"])
+        self.assertFalse(job["result"]["productBundleUpdated"])
+        self.assertEqual(job["result"]["runId"], "old-cache-run")
+
+    def test_asset_options_include_full_150_asset_universe(self):
+        serve_dashboard._UNIVERSE_ASSET_CACHE = None
+
+        universe_rows = serve_dashboard.universe_asset_rows()
+        options = serve_dashboard.asset_options()
+
+        self.assertEqual(len(universe_rows), 150)
+        self.assertGreaterEqual(len(options), 150)
+
+    def test_backend_cors_preflight_allows_beecast_frontend(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), serve_dashboard.DashboardHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_port}/api/status",
+                method="OPTIONS",
+                headers={
+                    "Origin": "https://hedgemate.eyefeet.com",
+                    "Access-Control-Request-Method": "POST",
+                },
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                self.assertEqual(response.status, 204)
+                self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), "https://hedgemate.eyefeet.com")
+                self.assertEqual(response.headers.get("Access-Control-Allow-Credentials"), "true")
+        finally:
+            server.shutdown()
+            server.server_close()
 
     def test_resolve_asset_query_accepts_label_and_ticker(self):
         self.assertEqual(serve_dashboard.resolve_asset_query("Tesla"), "TSLA")
@@ -864,6 +984,79 @@ class DashboardServerTests(unittest.TestCase):
 
                 self.assertEqual(job["status"], "queued")
                 self.assertTrue(calls.get("started"))
+
+    def test_scheduled_portfolio_reanalysis_payload_uses_active_portfolio_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "HedgeMate"
+            serve_dashboard.ROOT = root
+            serve_dashboard.INPUT_DIR = root / "inputs"
+            serve_dashboard.RUN_INPUT_DIR = root / "outputs" / "run_inputs"
+            portfolio_input = serve_dashboard.RUN_INPUT_DIR / "active-run" / "portfolio_weights.csv"
+            write_csv(
+                portfolio_input,
+                ["ticker", "weight_pct"],
+                [
+                    {"ticker": "AAPL", "weight_pct": "40"},
+                    {"ticker": "MSFT", "weight_pct": "35"},
+                    {"ticker": "GLD", "weight_pct": "25"},
+                ],
+            )
+            manifest = write_valid_active_manifest(root, "active-run", portfolio_input, data_version="20260611")
+            manifest["artifacts"]["portfolioInput"] = str(portfolio_input)
+
+            payload = serve_dashboard.scheduled_portfolio_reanalysis_payload(manifest)
+
+        self.assertEqual(payload["mode"], "portfolio_reanalysis")
+        self.assertTrue(payload["schedulerRefresh"])
+        self.assertEqual(payload["dataVersion"], "20260611")
+        self.assertEqual([row["ticker"] for row in payload["portfolioRows"]], ["AAPL", "MSFT", "GLD"])
+        self.assertEqual(sum(row["amountKrw"] for row in payload["portfolioRows"]), 10_000_000)
+
+    def test_scheduled_refresh_cycle_runs_portfolio_reanalysis_after_market_refresh(self):
+        calls = []
+        market_payloads = []
+
+        def fake_market_launcher(payload, runner, thread_factory):
+            market_payloads.append(dict(payload))
+            calls.append(payload["mode"])
+            return {"status": "completed", "mode": payload["mode"]}
+
+        def fake_news_launcher(payload, runner, thread_factory):
+            calls.append("news_overlay")
+            return {"status": "completed", "mode": "news_overlay"}
+
+        with mock.patch.object(serve_dashboard, "persistent_running_refresh_job", return_value=None), \
+             mock.patch.object(serve_dashboard, "scheduled_portfolio_reanalysis_payload", return_value={"mode": "portfolio_reanalysis"}), \
+             mock.patch.object(serve_dashboard, "launch_refresh_market_data_job", side_effect=fake_market_launcher), \
+             mock.patch.object(serve_dashboard, "launch_intraday_news_overlay_job", side_effect=fake_news_launcher):
+            result = serve_dashboard.run_scheduled_refresh_cycle(runner=lambda *_args, **_kwargs: None)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(calls, ["market_data_only", "portfolio_reanalysis", "intraday_nowcast", "news_overlay"])
+        intraday_payload = next(payload for payload in market_payloads if payload["mode"] == "intraday_nowcast")
+        self.assertNotIn("reuseRaw", intraday_payload)
+
+    def test_scheduler_waits_for_next_three_hour_anchor(self):
+        old_grace = serve_dashboard.SCHEDULER_ANCHOR_GRACE_SECONDS
+        serve_dashboard.SCHEDULER_ANCHOR_GRACE_SECONDS = 3 * 60
+        try:
+            wait_seconds = serve_dashboard.scheduler_next_wait_seconds(
+                reference_dt=datetime(2026, 6, 11, 16, 58, tzinfo=serve_dashboard.KST)
+            )
+            self.assertEqual(wait_seconds, 65 * 60)
+            wait_after_anchor = serve_dashboard.scheduler_next_wait_seconds(
+                reference_dt=datetime(2026, 6, 11, 18, 4, tzinfo=serve_dashboard.KST)
+            )
+            self.assertEqual(wait_after_anchor, 179 * 60)
+            self.assertEqual(
+                serve_dashboard.scheduler_next_wait_seconds(
+                    reference_dt=datetime(2026, 6, 11, 18, 4, tzinfo=serve_dashboard.KST),
+                    interval_seconds=10,
+                ),
+                10,
+            )
+        finally:
+            serve_dashboard.SCHEDULER_ANCHOR_GRACE_SECONDS = old_grace
 
     def test_refresh_market_data_job_runs_full_rebuild_only_when_explicit(self):
         class Result:
@@ -1862,7 +2055,7 @@ class DashboardServerTests(unittest.TestCase):
                     {
                         "candidate_name": "GLD",
                         "recommendation_status": "REFERENCE_ONLY",
-                        "formal_gate_blockers": "cash_baseline_lag|bootstrap_not_robust|cash_bootstrap_not_robust",
+                        "formal_gate_blockers": "cash_baseline_lag|bootstrap_not_robust|cash_bootstrap_not_robust|validation_skipped|validation_not_eligible",
                         "target_lags_cash_count": "2",
                         "target_avg_cash_net_stress_delta": "-0.012",
                         "target_min_cash_net_stress_delta": "-0.016",
@@ -1901,8 +2094,11 @@ class DashboardServerTests(unittest.TestCase):
             self.assertEqual(payload["formalGateAuditSummary"]["blockerCounts"]["cash_baseline_lag"], 1)
             self.assertEqual(payload["formalGateAuditSummary"]["blockerCounts"]["bootstrap_not_robust"], 1)
             self.assertEqual(payload["formalGateAuditSummary"]["blockerCounts"]["cash_bootstrap_not_robust"], 1)
+            self.assertEqual(payload["formalGateAuditSummary"]["blockerCounts"]["validation_skipped"], 1)
+            self.assertEqual(payload["formalGateAuditSummary"]["blockerCounts"]["validation_not_eligible"], 1)
             blocker_summary = payload["formalGateAuditSummary"]["blockerSummary"]
             self.assertEqual(blocker_summary["blockerCounts"]["cash_baseline_lag"], 1)
+            self.assertEqual(blocker_summary["unknownBlockers"], [])
             self.assertEqual(blocker_summary["items"][0]["count"], 1)
             self.assertIn("nextAction", blocker_summary["items"][0])
             self.assertEqual(payload["formalGateAuditSummary"]["cashBaselineAudit"]["lagCandidateRows"], 1)
@@ -4176,6 +4372,32 @@ class DashboardServerTests(unittest.TestCase):
             self.assertEqual(job["status"], "completed")
             self.assertEqual(job["jobType"], serve_dashboard.INTRADAY_NEWS_JOB_TYPE)
             self.assertEqual(serve_dashboard.RUN_JOBS["market-running"]["status"], "running")
+
+    def test_intraday_news_top5_hides_fallback_items_for_dashboard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "scenario_research" / "outputs" / "news_intraday"
+            serve_dashboard.SCENARIO_NEWS_INTRADAY_DIR = out_dir
+            top5_path = out_dir / "news_top5_fallback.json"
+            top5_path.parent.mkdir(parents=True, exist_ok=True)
+            top5_path.write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {"title": "Fallback fixture", "source": "Fallback Macro Fixture", "url": "fallback://intraday-news/1"},
+                            {"title": "Real article", "source": "Reuters", "url": "https://www.reuters.com/markets/"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            metadata = {"fallback_used": True, "paths": {"top5": str(top5_path)}}
+
+            visible, path = serve_dashboard.load_intraday_news_top5(metadata)
+            diagnostic, _ = serve_dashboard.load_intraday_news_top5(metadata, include_fallback=True)
+
+            self.assertEqual(path, top5_path)
+            self.assertEqual(visible, [])
+            self.assertEqual(len(diagnostic), 2)
 
     def test_scenario_dashboard_attaches_intraday_news_without_replacing_event_overlay(self):
         with tempfile.TemporaryDirectory() as tmp:

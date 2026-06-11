@@ -1,4 +1,3 @@
-import json
 import unittest
 import tempfile
 from datetime import date, timedelta
@@ -92,7 +91,7 @@ class ScenarioBacktestTest(unittest.TestCase):
             backtest.OUTPUT_REPORT_DIR = original_dir
         self.assertEqual([row["candidate_ticker"] for row in rows], ["GLD"])
 
-    def test_main_writes_empty_backtest_outputs_when_validation_cases_missing(self):
+    def test_main_fails_when_validation_cases_missing(self):
         import scripts.run_scenario_backtest as backtest
 
         original_scenario_root = backtest.SCENARIO_ROOT
@@ -117,32 +116,29 @@ class ScenarioBacktestTest(unittest.TestCase):
                         encoding="utf-8",
                     )
 
-                exit_code = backtest.main(
-                    [
-                        "--run-id",
-                        "backtest-run",
-                        "--historical-validation-run-id",
-                        "missing-fixture",
-                        "--hedgemate-run-id",
-                        "run",
-                        "--data-version",
-                        "20260610",
-                        "--portfolio-input",
-                        str(portfolio_input),
-                    ]
-                )
+                with self.assertRaises(FileNotFoundError):
+                    backtest.main(
+                        [
+                            "--run-id",
+                            "backtest-run",
+                            "--historical-validation-run-id",
+                            "missing-fixture",
+                            "--hedgemate-run-id",
+                            "run",
+                            "--data-version",
+                            "20260610",
+                            "--portfolio-input",
+                            str(portfolio_input),
+                        ]
+                    )
 
                 output_csv = backtest.OUTPUT_VALIDATION_DIR / "walk_forward_backtest_backtest-run.csv"
                 summary_md = backtest.OUTPUT_REPORT_DIR / "walk_forward_backtest_summary_backtest-run.md"
                 metadata_json = backtest.OUTPUT_REPORT_DIR / "walk_forward_backtest_metadata_backtest-run.json"
 
-                self.assertEqual(exit_code, 0)
-                self.assertTrue(output_csv.exists())
-                self.assertEqual(len(output_csv.read_text(encoding="utf-8").splitlines()), 1)
-                self.assertIn("Historical validation cases were not available", summary_md.read_text(encoding="utf-8"))
-                metadata = json.loads(metadata_json.read_text(encoding="utf-8"))
-                self.assertTrue(metadata["historical_validation_missing"])
-                self.assertEqual(metadata["row_count"], 0)
+                self.assertFalse(output_csv.exists())
+                self.assertFalse(summary_md.exists())
+                self.assertFalse(metadata_json.exists())
         finally:
             backtest.SCENARIO_ROOT = original_scenario_root
             backtest.OUTPUT_REPORT_DIR = original_report_dir

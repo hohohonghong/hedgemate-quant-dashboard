@@ -97,6 +97,49 @@ class RunDataPipelineTests(unittest.TestCase):
         self.assertEqual(krw_prices[2], ("2025-01-05", 15600.0))
         self.assertEqual(len(adv_series), 3)
 
+    def test_load_or_fetch_fx_falls_back_to_latest_cached_snapshot_when_fetch_empty(self):
+        original_output_raw_dir = run_data_pipeline.OUTPUT_RAW_DIR
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                output_raw = Path(tmp)
+                run_data_pipeline.OUTPUT_RAW_DIR = output_raw
+                cached_file = output_raw / "raw_fx_daily_20260610.csv"
+                cached_rows = [
+                    {
+                        "date": "2026-06-09",
+                        "ticker": run_data_pipeline.FX_TICKER,
+                        "close": 1360.0,
+                        "source": "yahoo",
+                        "currency": "KRW",
+                        "ingested_at": "2026-06-10T00:00:00+00:00",
+                    },
+                    {
+                        "date": "2026-06-10",
+                        "ticker": run_data_pipeline.FX_TICKER,
+                        "close": 1361.0,
+                        "source": "yahoo",
+                        "currency": "KRW",
+                        "ingested_at": "2026-06-10T00:00:00+00:00",
+                    },
+                ]
+                write_fx_raw(cached_file, cached_rows)
+
+                with mock.patch.object(run_data_pipeline, "fetch_yahoo_chart", return_value=[]):
+                    fx_file, fx_rows, fx_rate_map, used_cached = run_data_pipeline.load_or_fetch_fx(
+                        0,
+                        1,
+                        "20260611-empty",
+                        "2026-06-11T00:00:00+00:00",
+                    )
+
+                self.assertEqual(fx_file, cached_file)
+                self.assertTrue(used_cached)
+                self.assertEqual(len(fx_rows), 2)
+                self.assertEqual(fx_rate_map["2026-06-10"], 1361.0)
+                self.assertFalse((output_raw / "raw_fx_daily_20260611-empty.csv").exists())
+        finally:
+            run_data_pipeline.OUTPUT_RAW_DIR = original_output_raw_dir
+
     def test_parse_budget_list_dedupes_and_preserves_order(self):
         self.assertEqual(run_data_pipeline.parse_budget_list("10,20,20,30"), [10.0, 20.0, 30.0])
 
@@ -1802,7 +1845,7 @@ class RunDataPipelineTests(unittest.TestCase):
                 run_data_pipeline.update_latest_manifest(
                     {
                         "active_hedgemate_run": "20260310T000000000000-deadbeef",
-                        "active_hedgemate_sensitivity_path": "../HedgeMate/outputs/processed/asset_scenario_sensitivity_20260310T000000000000-deadbeef.csv",
+                        "active_hedgemate_sensitivity_path": "../../HedgeMate/outputs/processed/asset_scenario_sensitivity_20260310T000000000000-deadbeef.csv",
                     },
                     path=scenario_manifest,
                 )
@@ -1813,6 +1856,7 @@ class RunDataPipelineTests(unittest.TestCase):
             self.assertEqual(payload["active_hedgemate_run"], "hedgemate-prod")
             self.assertEqual(payload["legacy_hedgemate_run"], "20260310T000000000000-deadbeef")
             self.assertEqual(payload["active_hedgemate_manifest_basis"], "HedgeMate/outputs/latest_manifest.json")
+            self.assertEqual(payload["active_hedgemate_product_manifest_path"], "../../HedgeMate/outputs/latest_manifest.json")
             self.assertIn("post_backtest", payload["active_hedgemate_recommendation_status_qa_path"])
 
     def test_resolve_fetch_start_dt_defaults_to_gfc_coverage(self):
