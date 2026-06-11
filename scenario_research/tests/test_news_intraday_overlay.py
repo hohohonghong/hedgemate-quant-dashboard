@@ -32,6 +32,29 @@ class IntradayNewsOverlayTest(unittest.TestCase):
             )
             self.assertEqual(news.load_gemini_api_key(project_root=root / "empty", env={}), (None, "missing"))
 
+    def test_openai_key_loader_supports_file_env_default_and_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            explicit = root / "explicit_openai_key.txt"
+            explicit.write_text("file-secret", encoding="utf-8")
+            default = root / ".secrets" / "openai_api_key.txt"
+            default.parent.mkdir(parents=True)
+            default.write_text("default-secret", encoding="utf-8")
+
+            self.assertEqual(
+                news.load_openai_api_key(project_root=root, env={"OPENAI_API_KEY_FILE": str(explicit)}),
+                ("file-secret", "OPENAI_API_KEY_FILE"),
+            )
+            self.assertEqual(
+                news.load_openai_api_key(project_root=root, env={}),
+                ("default-secret", "project/.secrets/openai_api_key.txt"),
+            )
+            self.assertEqual(
+                news.load_openai_api_key(project_root=root / "empty", env={"OPENAI_API_KEY": "env-secret"}),
+                ("env-secret", "OPENAI_API_KEY"),
+            )
+            self.assertEqual(news.load_openai_api_key(project_root=root / "empty", env={}), (None, "missing"))
+
     def test_fallback_pipeline_writes_only_news_intraday_outputs_and_preserves_event_metadata(self):
         original_project_root = news.PROJECT_ROOT
         with tempfile.TemporaryDirectory() as tmp:
@@ -67,6 +90,8 @@ class IntradayNewsOverlayTest(unittest.TestCase):
             metadata = json.loads((output_dir / "news_overlay_metadata_unit-news.json").read_text(encoding="utf-8"))
             self.assertEqual(metadata["provider"], "fallback_fixture")
             self.assertTrue(metadata["fallback_used"])
+            self.assertEqual(metadata["ai_provider"], "gemini")
+            self.assertEqual(metadata["provider_model"], news.GEMINI_DEFAULT_MODEL)
             self.assertEqual(metadata["gemini_model"], news.GEMINI_DEFAULT_MODEL)
             self.assertEqual(metadata["allowed_refresh_hours_kst"], [9, 15, 21])
             self.assertLessEqual(metadata["top5_count"], 5)
@@ -76,6 +101,45 @@ class IntradayNewsOverlayTest(unittest.TestCase):
             self.assertIn("latestIntradayNewsOverlay", manifest)
             self.assertIn("intradayNewsOverlayStatus", manifest)
             self.assertLessEqual(len(manifest["intradayNewsTop5"]), 5)
+
+    def test_openai_pipeline_records_openai_provider_metadata_without_key(self):
+        original_project_root = news.PROJECT_ROOT
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_dir = root / "scenario_research" / "outputs" / "news_intraday"
+            manifest_path = root / "HedgeMate" / "outputs" / "latest_manifest.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text("{}", encoding="utf-8")
+            news.PROJECT_ROOT = root
+            try:
+                news.run_pipeline(
+                    run_id="unit-openai-news",
+                    data_version="20260608",
+                    trigger_reason="unit_test",
+                    allow_network=False,
+                    output_dir=output_dir,
+                    manifest_path=manifest_path,
+                    provider_name="openai",
+                    model_name=news.OPENAI_DEFAULT_NEWS_MODEL,
+                )
+            finally:
+                news.PROJECT_ROOT = original_project_root
+
+            metadata = json.loads((output_dir / "news_overlay_metadata_unit-openai-news.json").read_text(encoding="utf-8"))
+            self.assertEqual(metadata["ai_provider"], "openai")
+            self.assertEqual(metadata["provider_model"], news.OPENAI_DEFAULT_NEWS_MODEL)
+            self.assertEqual(metadata["provider_key_source"], "missing")
+            self.assertEqual(metadata["provider"], "fallback_fixture")
+            self.assertEqual(metadata["fallback_reason"], "missing_openai_api_key")
+            self.assertEqual(metadata["openai_model"], news.OPENAI_DEFAULT_NEWS_MODEL)
+            self.assertEqual(metadata["openai_key_source"], "missing")
+            self.assertIsNone(metadata["gemini_model"])
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            status = manifest["intradayNewsOverlayStatus"]
+            self.assertEqual(status["aiProvider"], "openai")
+            self.assertEqual(status["providerModel"], news.OPENAI_DEFAULT_NEWS_MODEL)
+            self.assertEqual(status["openaiKeySource"], "missing")
 
     def test_dedupe_source_limit_gemini_input_and_top5_limits(self):
         rows = []
@@ -349,6 +413,74 @@ class IntradayNewsOverlayTest(unittest.TestCase):
         self.assertEqual(events[0]["source"], "서울경제")
         self.assertEqual(events[0]["url_or_ref"], "https://news.google.com/rss/articles/example")
         self.assertEqual(events[0]["evidence_span"], "원화 약세 부담 확대")
+
+    def test_openai_events_are_reconciled_to_candidate_kst_date_source_and_url(self):
+        row = news.candidate_row(
+            source="한국경제",
+            title="반도체 투자심리 약화",
+            summary="삼성전자와 SK하이닉스가 약세를 보였다.",
+            url="https://news.google.com/rss/articles/openai-example",
+            published_at=datetime(2026, 6, 8, 21, 0, tzinfo=timezone.utc),
+            provider="google_news_rss",
+        )
+        event = news.infer_fallback_event(row)
+        event.update(
+            {
+                "date": "2026-06-08",
+                "source": "Wrong Source",
+                "url_or_ref": "https://news.google.com/rss/articles/openai-example",
+                "evidence_span": '<b>반도체</b> 투자심리 약화',
+            }
+        )
+
+        def request(_api_key, payload, model_name):
+            self.assertEqual(model_name, news.OPENAI_DEFAULT_NEWS_MODEL)
+            self.assertEqual(len(payload["rows"]), 1)
+            return {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": json.dumps({"events": [event]}),
+                            }
+                        ],
+                    }
+                ]
+            }
+
+        events, status = news.extract_events_with_openai(
+            [row],
+            api_key="secret",
+            model_name=news.OPENAI_DEFAULT_NEWS_MODEL,
+            request_fn=request,
+        )
+
+        self.assertFalse(status["fallback_used"])
+        self.assertEqual(status["provider"], "openai")
+        self.assertEqual(events[0]["date"], "2026-06-09")
+        self.assertEqual(events[0]["source"], "한국경제")
+        self.assertEqual(events[0]["url_or_ref"], "https://news.google.com/rss/articles/openai-example")
+        self.assertEqual(events[0]["evidence_span"], "반도체 투자심리 약화")
+
+    def test_openai_missing_key_falls_back_to_valid_rows(self):
+        rows = [
+            news.candidate_row(
+                source="unit",
+                title="KRW risk headline",
+                summary="USD/KRW pressure remains visible",
+                provider="gdelt_doc_api",
+            )
+        ]
+
+        raw_events, status = news.extract_events_with_openai(rows, api_key=None)
+        articles, errors = news.validate_and_normalize_events(raw_events)
+
+        self.assertTrue(status["fallback_used"])
+        self.assertEqual(status["fallback_reason"], "missing_openai_api_key")
+        self.assertEqual(errors, [])
+        self.assertEqual(len(articles), 1)
 
     def test_gemini_invalid_response_falls_back_to_valid_rows(self):
         rows = [

@@ -60,6 +60,8 @@ KST = ZoneInfo("Asia/Seoul")
 NEWS_ENGINE_VERSION = "intraday_news_overlay_v1"
 NEWS_SCHEMA_VERSION = "intraday_news_extraction_schema_v1"
 GEMINI_DEFAULT_MODEL = "gemini-2.5-flash-lite"
+OPENAI_DEFAULT_NEWS_MODEL = "gpt-5.4-nano"
+SUPPORTED_AI_PROVIDERS = {"gemini", "openai"}
 ALLOWED_REFRESH_HOURS_KST = (9, 15, 21)
 SOURCE_LIMIT = 10
 GEMINI_INPUT_MIN = 5
@@ -478,6 +480,60 @@ def load_gemini_api_key(project_root: Path | None = None, env: dict[str, str] | 
     if env_key:
         return env_key, "GEMINI_API_KEY"
     return None, "missing"
+
+
+def load_openai_api_key(project_root: Path | None = None, env: dict[str, str] | None = None) -> tuple[str | None, str]:
+    env = env or os.environ
+    project_root = project_root or PROJECT_ROOT
+    key_file = str(env.get("OPENAI_API_KEY_FILE") or "").strip()
+    if key_file:
+        path = Path(key_file)
+        try:
+            key = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            key = ""
+        if key:
+            return key, "OPENAI_API_KEY_FILE"
+
+    default_path = project_root / ".secrets" / "openai_api_key.txt"
+    try:
+        key = default_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        key = ""
+    if key:
+        return key, "project/.secrets/openai_api_key.txt"
+
+    env_key = str(env.get("OPENAI_API_KEY") or "").strip()
+    if env_key:
+        return env_key, "OPENAI_API_KEY"
+    return None, "missing"
+
+
+def normalize_ai_provider(provider_name: str | None, env: dict[str, str] | None = None) -> str:
+    env = env or os.environ
+    provider = str(
+        provider_name
+        or env.get("AI_PROVIDER")
+        or env.get("NEWS_AI_PROVIDER")
+        or env.get("INTRADAY_NEWS_AI_PROVIDER")
+        or "gemini"
+    ).strip().lower()
+    return provider if provider in SUPPORTED_AI_PROVIDERS else "gemini"
+
+
+def default_model_for_provider(provider_name: str, env: dict[str, str] | None = None) -> str:
+    env = env or os.environ
+    provider = normalize_ai_provider(provider_name, env=env)
+    if provider == "openai":
+        return str(env.get("OPENAI_NEWS_MODEL") or env.get("OPENAI_MODEL") or OPENAI_DEFAULT_NEWS_MODEL).strip()
+    return str(env.get("GEMINI_NEWS_MODEL") or env.get("GEMINI_MODEL") or GEMINI_DEFAULT_MODEL).strip()
+
+
+def load_provider_api_key(provider_name: str, project_root: Path | None = None) -> tuple[str | None, str]:
+    provider = normalize_ai_provider(provider_name)
+    if provider == "openai":
+        return load_openai_api_key(project_root=project_root)
+    return load_gemini_api_key(project_root=project_root)
 
 
 def request_json(url: str, headers: dict[str, str] | None = None, timeout_seconds: int = 20) -> dict[str, object]:
@@ -1076,6 +1132,56 @@ def post_gemini_json(
         return json.loads(response.read().decode("utf-8"))
 
 
+def openai_news_response_schema() -> dict[str, object]:
+    schema = json.loads(json.dumps(GEMINI_NEWS_RESPONSE_SCHEMA))
+    schema["additionalProperties"] = False
+    try:
+        schema["properties"]["events"]["items"]["additionalProperties"] = False
+    except (KeyError, TypeError):
+        pass
+    return schema
+
+
+def post_openai_json(
+    api_key: str,
+    payload: dict[str, object],
+    *,
+    model_name: str = OPENAI_DEFAULT_NEWS_MODEL,
+    timeout_seconds: int = 60,
+) -> dict[str, object]:
+    request_payload = {
+        "model": model_name,
+        "input": [
+            {
+                "role": "system",
+                "content": "You extract market-risk events from news candidates and return schema-valid JSON only.",
+            },
+            {"role": "user", "content": build_gemini_prompt(payload.get("rows") or [])},
+        ],
+        "store": False,
+        "max_output_tokens": 2500,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "intraday_news_events",
+                "strict": True,
+                "schema": openai_news_response_schema(),
+            }
+        },
+    }
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/responses",
+        data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout_seconds, context=https_ssl_context()) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def parse_gemini_events(response: dict[str, object]) -> list[dict[str, object]]:
     try:
         candidates = response["candidates"]
@@ -1099,6 +1205,36 @@ def parse_gemini_events(response: dict[str, object]) -> list[dict[str, object]]:
     return normalized
 
 
+def parse_openai_events(response: dict[str, object]) -> list[dict[str, object]]:
+    text_parts = []
+    direct_text = response.get("output_text")
+    if direct_text:
+        text_parts.append(str(direct_text))
+    for item in response.get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        for content in item.get("content") or []:
+            if isinstance(content, dict) and content.get("type") in {"output_text", "text"}:
+                text_parts.append(str(content.get("text") or ""))
+    text = "".join(text_parts).strip()
+    if not text:
+        raise ValueError("OpenAI response did not include output text.")
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("OpenAI response text was not valid JSON.") from exc
+    events = parsed.get("events") if isinstance(parsed, dict) else parsed if isinstance(parsed, list) else None
+    if not isinstance(events, list) or not all(isinstance(row, dict) for row in events):
+        raise ValueError("OpenAI JSON must contain an events array.")
+    normalized = []
+    for row in events:
+        next_row = dict(row)
+        if isinstance(next_row.get("scenario_links"), list):
+            next_row["scenario_links"] = "|".join(str(item) for item in next_row["scenario_links"] if item)
+        normalized.append(next_row)
+    return normalized
+
+
 def extract_events_with_gemini(
     rows: list[dict[str, object]],
     *,
@@ -1112,6 +1248,7 @@ def extract_events_with_gemini(
             "fallback_used": True,
             "fallback_reason": "missing_gemini_api_key",
             "gemini_input_count": len(rows),
+            "ai_provider": "gemini",
         }
 
     payload = {
@@ -1139,6 +1276,7 @@ def extract_events_with_gemini(
             "fallback_used": False,
             "fallback_reason": None,
             "gemini_input_count": len(rows),
+            "ai_provider": "gemini",
         }
     except Exception as exc:
         return [infer_fallback_event(row) for row in rows], {
@@ -1146,6 +1284,53 @@ def extract_events_with_gemini(
             "fallback_used": True,
             "fallback_reason": type(exc).__name__,
             "gemini_input_count": len(rows),
+            "ai_provider": "gemini",
+        }
+
+
+def extract_events_with_openai(
+    rows: list[dict[str, object]],
+    *,
+    api_key: str | None,
+    model_name: str = OPENAI_DEFAULT_NEWS_MODEL,
+    request_fn=post_openai_json,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    if not api_key:
+        return [infer_fallback_event(row) for row in rows], {
+            "provider": "fallback_fixture",
+            "fallback_used": True,
+            "fallback_reason": "missing_openai_api_key",
+            "openai_input_count": len(rows),
+            "ai_provider": "openai",
+        }
+
+    payload = {"rows": rows}
+    try:
+        response = request_fn(api_key, payload, model_name=model_name)
+        events = parse_openai_events(response)
+        schema_errors = validate_provider_event_payload(events, strict=True)
+        if schema_errors:
+            raise ValueError("OpenAI events failed schema validation.")
+        events = reconcile_events_with_candidates(events, rows)
+        if not events:
+            raise ValueError("OpenAI events did not match candidate rows.")
+        schema_errors = validate_provider_event_payload(events, strict=True)
+        if schema_errors:
+            raise ValueError("Reconciled OpenAI events failed schema validation.")
+        return events, {
+            "provider": "openai",
+            "fallback_used": False,
+            "fallback_reason": None,
+            "openai_input_count": len(rows),
+            "ai_provider": "openai",
+        }
+    except Exception as exc:
+        return [infer_fallback_event(row) for row in rows], {
+            "provider": "fallback_after_openai_error",
+            "fallback_used": True,
+            "fallback_reason": type(exc).__name__,
+            "openai_input_count": len(rows),
+            "ai_provider": "openai",
         }
 
 
@@ -1274,7 +1459,7 @@ def build_metadata(
     source_statuses: list[dict[str, object]],
     candidates: list[dict[str, object]],
     ranked: list[dict[str, object]],
-    gemini_inputs: list[dict[str, object]],
+    provider_inputs: list[dict[str, object]],
     article_rows: list[dict[str, object]],
     daily_rows: list[dict[str, object]],
     top5: list[dict[str, object]],
@@ -1283,7 +1468,9 @@ def build_metadata(
     paths: dict[str, Path],
     key_source: str,
     model_name: str,
+    ai_provider: str,
 ) -> dict[str, object]:
+    provider = normalize_ai_provider(ai_provider)
     return {
         "status": "success",
         "run_id": run_id,
@@ -1301,7 +1488,8 @@ def build_metadata(
         "candidate_count": len(candidates),
         "ranked_candidate_count": len(ranked),
         "source_limit": SOURCE_LIMIT,
-        "gemini_input_count": len(gemini_inputs),
+        "provider_input_count": len(provider_inputs),
+        "gemini_input_count": len(provider_inputs),
         "gemini_input_min": GEMINI_INPUT_MIN,
         "gemini_input_max": GEMINI_INPUT_MAX,
         "ui_top_limit": UI_TOP_LIMIT,
@@ -1312,12 +1500,19 @@ def build_metadata(
         "schema_error_count": len(schema_errors),
         "schema_errors_sample": schema_errors[:10],
         "source_statuses": source_statuses,
+        "ai_provider": provider,
+        "provider_model": model_name,
+        "provider_key_source": key_source,
+        "provider_key_present": key_source != "missing",
         "provider": extraction_status.get("provider"),
         "fallback_used": bool(extraction_status.get("fallback_used")),
         "fallback_reason": extraction_status.get("fallback_reason"),
-        "gemini_model": model_name,
-        "gemini_key_source": key_source,
-        "gemini_key_present": key_source != "missing",
+        "gemini_model": model_name if provider == "gemini" else None,
+        "gemini_key_source": key_source if provider == "gemini" else None,
+        "gemini_key_present": provider == "gemini" and key_source != "missing",
+        "openai_model": model_name if provider == "openai" else None,
+        "openai_key_source": key_source if provider == "openai" else None,
+        "openai_key_present": provider == "openai" and key_source != "missing",
         "market_state_usage": "intraday_explanatory_overlay_only",
         "report_recommendation_usage": "disabled",
         "phase6_merge_ready": False,
@@ -1359,11 +1554,16 @@ def update_product_manifest(
         "refreshWindowKst": metadata.get("refresh_window_kst"),
         "allowedRefreshHoursKst": metadata.get("allowed_refresh_hours_kst"),
         "top5Count": metadata.get("top5_count"),
+        "aiProvider": metadata.get("ai_provider"),
         "provider": metadata.get("provider"),
+        "providerModel": metadata.get("provider_model"),
+        "providerKeySource": metadata.get("provider_key_source"),
         "fallbackUsed": metadata.get("fallback_used"),
         "fallbackReason": metadata.get("fallback_reason"),
         "geminiModel": metadata.get("gemini_model"),
         "geminiKeySource": metadata.get("gemini_key_source"),
+        "openaiModel": metadata.get("openai_model"),
+        "openaiKeySource": metadata.get("openai_key_source"),
         "marketStateUsage": metadata.get("market_state_usage"),
         "reportRecommendationUsage": metadata.get("report_recommendation_usage"),
         "metadataPath": manifest_rel(metadata_path),
@@ -1385,7 +1585,8 @@ def run_pipeline(
     allow_network: bool = True,
     output_dir: Path = NEWS_OUTPUT_DIR,
     manifest_path: Path = HEDGEMATE_MANIFEST_PATH,
-    model_name: str = GEMINI_DEFAULT_MODEL,
+    provider_name: str | None = None,
+    model_name: str | None = None,
 ) -> dict[str, Path | object]:
     run_ts = now_utc()
     refresh_window = current_news_window_kst(run_ts)
@@ -1409,9 +1610,22 @@ def run_pipeline(
         reference_dt=run_ts,
     )
     ranked = rank_candidates(candidates, reference_dt=run_ts)
-    gemini_inputs = select_gemini_input_candidates(ranked)
-    api_key, key_source = load_gemini_api_key(PROJECT_ROOT)
-    raw_events, extraction_status = extract_events_with_gemini(gemini_inputs, api_key=api_key, model_name=model_name)
+    provider_inputs = select_gemini_input_candidates(ranked)
+    ai_provider = normalize_ai_provider(provider_name)
+    model_name = str(model_name or default_model_for_provider(ai_provider)).strip()
+    api_key, key_source = load_provider_api_key(ai_provider, PROJECT_ROOT)
+    if ai_provider == "openai":
+        raw_events, extraction_status = extract_events_with_openai(
+            provider_inputs,
+            api_key=api_key,
+            model_name=model_name,
+        )
+    else:
+        raw_events, extraction_status = extract_events_with_gemini(
+            provider_inputs,
+            api_key=api_key,
+            model_name=model_name,
+        )
     article_rows, schema_errors = validate_and_normalize_events(raw_events)
     daily_rows = build_daily_overlay_rows(article_rows)
     top5 = build_top5(article_rows)
@@ -1446,7 +1660,7 @@ def run_pipeline(
         source_statuses=source_statuses,
         candidates=candidates,
         ranked=ranked,
-        gemini_inputs=gemini_inputs,
+        provider_inputs=provider_inputs,
         article_rows=article_rows,
         daily_rows=daily_rows,
         top5=top5,
@@ -1455,6 +1669,7 @@ def run_pipeline(
         paths=paths,
         key_source=key_source,
         model_name=model_name,
+        ai_provider=ai_provider,
     )
     write_json(metadata_path, metadata)
     update_product_manifest(

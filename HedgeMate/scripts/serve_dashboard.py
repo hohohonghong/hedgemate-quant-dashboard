@@ -1913,11 +1913,16 @@ def latest_intraday_news_overlay_status(reference_dt=None):
         "requiredWindowKst": anchor.isoformat(),
         "refreshWindowKst": refresh_window.astimezone(KST).isoformat() if refresh_window else None,
         "allowedRefreshHoursKst": list(INTRADAY_NEWS_REFRESH_HOURS_KST),
+        "aiProvider": metadata.get("ai_provider"),
         "provider": metadata.get("provider"),
+        "providerModel": metadata.get("provider_model"),
+        "providerKeySource": metadata.get("provider_key_source"),
         "fallbackUsed": bool(metadata.get("fallback_used")),
         "fallbackReason": metadata.get("fallback_reason"),
         "geminiModel": metadata.get("gemini_model"),
         "geminiKeySource": metadata.get("gemini_key_source"),
+        "openaiModel": metadata.get("openai_model"),
+        "openaiKeySource": metadata.get("openai_key_source"),
         "top5Count": len(top5),
         "metadataPath": str(metadata_path) if metadata_path else None,
         "top5Path": str(top5_path) if top5_path else None,
@@ -4575,7 +4580,20 @@ def _run_intraday_news_overlay_job(job_id, payload, runner):
     trigger_reason = str((payload or {}).get("triggerReason") or (payload or {}).get("trigger_reason") or "scheduled")
     force = bool((payload or {}).get("force"))
     allow_network = not bool((payload or {}).get("noNetwork"))
-    model = str((payload or {}).get("model") or "gemini-2.5-flash-lite")
+    provider = str(
+        (payload or {}).get("provider")
+        or os.environ.get("AI_PROVIDER")
+        or os.environ.get("NEWS_AI_PROVIDER")
+        or os.environ.get("INTRADAY_NEWS_AI_PROVIDER")
+        or "gemini"
+    ).strip().lower()
+    if provider not in {"gemini", "openai"}:
+        provider = "gemini"
+    if provider == "openai":
+        default_model = os.environ.get("OPENAI_NEWS_MODEL") or os.environ.get("OPENAI_MODEL") or "gpt-5.4-nano"
+    else:
+        default_model = os.environ.get("GEMINI_NEWS_MODEL") or os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash-lite"
+    model = str((payload or {}).get("model") or default_model).strip()
 
     _update_run_job(job_id, stage="intraday news overlay", currentStep="refreshing intraday Top5 news overlay")
     news_run_id = f"intraday-news-refresh-{run_stamp}"
@@ -4588,6 +4606,8 @@ def _run_intraday_news_overlay_job(job_id, payload, runner):
         data_version,
         "--trigger-reason",
         trigger_reason,
+        "--provider",
+        provider,
         "--model",
         model,
     ]
@@ -5340,8 +5360,8 @@ def apply_intraday_news_to_primary_market_state(primary_market_state, news_top5,
         return primary_market_state, summary
 
     status = news_status if isinstance(news_status, dict) else {}
-    if status.get("fallbackUsed") or status.get("provider") != "gemini":
-        summary["skipReason"] = "news_provider_not_gemini_validated"
+    if status.get("fallbackUsed") or status.get("provider") not in {"gemini", "openai"}:
+        summary["skipReason"] = "news_provider_not_llm_validated"
         summary["provider"] = status.get("provider")
         summary["fallbackUsed"] = bool(status.get("fallbackUsed"))
         primary_market_state["newsAdjustmentApplied"] = False

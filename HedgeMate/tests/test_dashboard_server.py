@@ -4659,7 +4659,7 @@ class DashboardServerTests(unittest.TestCase):
             }
         ]
 
-        status = {"provider": "gemini", "fallbackUsed": False}
+        status = {"provider": "openai", "fallbackUsed": False}
         adjusted, summary = serve_dashboard.apply_intraday_news_to_primary_market_state(primary, news, status)
 
         self.assertFalse(summary["applied"])
@@ -4740,7 +4740,7 @@ class DashboardServerTests(unittest.TestCase):
         adjusted, summary = serve_dashboard.apply_intraday_news_to_primary_market_state(primary, news, status)
 
         self.assertFalse(summary["applied"])
-        self.assertEqual(summary["skipReason"], "news_provider_not_gemini_validated")
+        self.assertEqual(summary["skipReason"], "news_provider_not_llm_validated")
         self.assertFalse(adjusted["newsAdjustmentApplied"])
         self.assertEqual(adjusted["score"], 58.0)
 
