@@ -175,6 +175,9 @@
     hideElementWithText('reading raw_market_daily', main);
     hideElementWithText('정식 일간 기준', main);
     hideElementWithText('현재 데이터 기준:', main);
+    main.querySelectorAll('.market-basis-chip').forEach((el) => {
+      if (!el.closest('.hm-qa-market-nowcast')) el.style.display = 'none';
+    });
 
     const basis = primary.asOfKst ? fmtKst(primary.asOfKst) : fmtDate(primary.dataAsOfDate || market.asOfDate);
     const score = Number.isFinite(Number(primary.score)) ? Number(primary.score).toFixed(1) : '-';
