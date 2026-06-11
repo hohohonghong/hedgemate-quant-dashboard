@@ -209,6 +209,112 @@ class DashboardServerTests(unittest.TestCase):
         self.assertIn("--frontend-api-base", command)
         self.assertIn(external_api, command)
 
+    def test_dashboard_snapshot_write_read_and_active_run_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "HedgeMate"
+            scenario = root.parent / "scenario_research"
+            serve_dashboard.ROOT = root
+            serve_dashboard.INPUT_DIR = root / "inputs"
+            serve_dashboard.SCENARIO_RESEARCH_ROOT = scenario
+            serve_dashboard.SCENARIO_OUTPUT_DIR = scenario / "outputs"
+            portfolio_input = root / "inputs" / "portfolio_weights.csv"
+            write_csv(
+                portfolio_input,
+                ["ticker", "weight_pct"],
+                [{"ticker": "AAPL", "weight_pct": "60"}, {"ticker": "GLD", "weight_pct": "40"}],
+            )
+            write_valid_active_manifest(root, "run-1", portfolio_input)
+            (serve_dashboard.SCENARIO_OUTPUT_DIR / "latest_manifest.json").parent.mkdir(parents=True, exist_ok=True)
+            (serve_dashboard.SCENARIO_OUTPUT_DIR / "latest_manifest.json").write_text(
+                json.dumps({"active_scenario_run": "scenario-active", "active_final_run": "final-active"}),
+                encoding="utf-8",
+            )
+
+            path = serve_dashboard.write_dashboard_snapshot("product_dashboard", {"productStatus": "REVIEW_ONLY"})
+            self.assertTrue(path.exists())
+            loaded = serve_dashboard.load_dashboard_snapshot_payload("product_dashboard")
+            self.assertEqual(loaded["productStatus"], "REVIEW_ONLY")
+
+            manifest = serve_dashboard.read_product_manifest()
+            manifest["active_bundle"]["hedgemate_run"] = "run-2"
+            (root / "outputs" / "latest_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+            self.assertIsNone(serve_dashboard.load_dashboard_snapshot_payload("product_dashboard"))
+
+    def test_service_status_uses_snapshot_without_loading_product_dashboard(self):
+        manifest = {
+            "active_bundle": {
+                "hedgemate_run": "run-1",
+                "scenario_run": "scenario-1",
+                "final_market_state_run": "final-1",
+                "backtest_run": "backtest-run-1",
+                "data_version": "20260611",
+                "generated_at_utc": "2026-06-11T10:22:20Z",
+                "portfolioInputSha256": "sha",
+                "portfolio_input_fingerprint": {"hash": "fp"},
+            },
+            "event_overlay_status": {"trade_gate_usage": "disabled_for_fixture"},
+        }
+        snapshot = {
+            "productStatus": "REVIEW_ONLY",
+            "recommendationDecision": {
+                "state": "NO_FORMAL_RECOMMENDATION",
+                "canExecuteRecommendations": False,
+                "formalRecommendationCount": 0,
+                "referenceOnlyCount": 2,
+                "failGateCount": 10,
+            },
+        }
+
+        with mock.patch.object(serve_dashboard, "read_product_manifest", return_value=manifest), \
+             mock.patch.object(serve_dashboard, "load_data_freshness", return_value={"needsRefresh": False, "marketDataFresh": True, "intradayNowcastFresh": True}), \
+             mock.patch.object(serve_dashboard, "active_bundle_integrity", return_value={"ok": True, "missingArtifacts": []}), \
+             mock.patch.object(serve_dashboard, "database_health", return_value={"ok": True, "kind": "sqlite", "database": "sqlite:test"}), \
+             mock.patch.object(serve_dashboard, "latest_intraday_news_overlay_status", return_value={"fresh": True}), \
+             mock.patch.object(serve_dashboard, "load_dashboard_snapshot_payload", return_value=snapshot), \
+             mock.patch.object(serve_dashboard, "load_product_dashboard_data") as heavy_loader:
+            status = serve_dashboard.load_service_status()
+
+        heavy_loader.assert_not_called()
+        self.assertEqual(status["productStatus"], "REVIEW_ONLY")
+        self.assertEqual(status["referenceOnlyCount"], 2)
+        self.assertEqual(status["failGateCount"], 10)
+
+    def test_dashboard_get_endpoints_use_snapshot_without_heavy_loaders(self):
+        server = serve_dashboard.ThreadingHTTPServer(("127.0.0.1", 0), serve_dashboard.DashboardHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+        def snapshot_payload(kind):
+            return {
+                "ok": True,
+                "snapshot": {"kind": kind, "current": True},
+                "productStatus": "REVIEW_ONLY" if kind == "product_dashboard" else None,
+            }
+
+        try:
+            with mock.patch.object(serve_dashboard, "load_dashboard_snapshot_payload", side_effect=snapshot_payload), \
+                 mock.patch.object(serve_dashboard, "load_product_dashboard_data") as product_loader, \
+                 mock.patch.object(serve_dashboard, "load_scenario_dashboard_data") as scenario_loader:
+                with urllib.request.urlopen(f"{base_url}/api/product-dashboard?compact=1", timeout=5) as response:
+                    self.assertEqual(response.status, 200)
+                    product_payload = json.loads(response.read().decode("utf-8"))
+                with urllib.request.urlopen(f"{base_url}/api/scenario-dashboard", timeout=5) as response:
+                    self.assertEqual(response.status, 200)
+                    scenario_payload = json.loads(response.read().decode("utf-8"))
+
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+            server.server_close()
+
+        product_loader.assert_not_called()
+        scenario_loader.assert_not_called()
+        self.assertEqual(product_payload["snapshot"]["kind"], "product_dashboard")
+        self.assertTrue(product_payload["payloadCompact"]["enabled"])
+        self.assertEqual(scenario_payload["snapshot"]["kind"], "scenario_dashboard")
+
     def test_analysis_cache_hit_does_not_overwrite_active_manifest(self):
         previous_root = serve_dashboard.ROOT
         previous_cache_dir = serve_dashboard.ANALYSIS_CACHE_DIR

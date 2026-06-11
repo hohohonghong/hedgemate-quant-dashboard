@@ -68,6 +68,12 @@ OUTPUT_VALIDATION_DIR = ROOT / "outputs" / "validation"
 PRICE_CACHE_DIR = ROOT / "outputs" / "price_cache"
 ANALYSIS_CACHE_DIR = ROOT / "outputs" / "analysis_cache"
 ANALYSIS_CACHE_INDEX_PATH = ANALYSIS_CACHE_DIR / "index.json"
+SNAPSHOT_VERSION = "dashboard_snapshot_v1"
+SNAPSHOT_KINDS = {
+    "service_status": "service_status_snapshot.json",
+    "scenario_dashboard": "scenario_dashboard_snapshot.json",
+    "product_dashboard": "product_dashboard_snapshot.json",
+}
 LOCALHOST_CLIENTS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 MAX_JSON_BODY_BYTES = 2 * 1024 * 1024
 RUN_INPUT_DIR = ROOT / "outputs" / "run_inputs"
@@ -2361,6 +2367,181 @@ def product_data_freshness_response(data_freshness):
     return response
 
 
+def dashboard_snapshot_dir():
+    return ROOT / "outputs" / "server" / "snapshots"
+
+
+def dashboard_snapshot_path(kind):
+    filename = SNAPSHOT_KINDS.get(kind)
+    if not filename:
+        raise ValueError(f"unknown dashboard snapshot kind: {kind}")
+    return dashboard_snapshot_dir() / filename
+
+
+def dashboard_snapshot_metadata(product_manifest=None, scenario_manifest=None):
+    product_manifest = product_manifest if isinstance(product_manifest, dict) else read_product_manifest()
+    scenario_manifest = scenario_manifest if isinstance(scenario_manifest, dict) else read_active_manifest()
+    product_summary = manifest_run_summary(product_manifest)
+    scenario_summary = manifest_run_summary(scenario_manifest)
+    product_bundle = active_bundle(product_manifest)
+    fingerprint = (
+        product_bundle.get("portfolio_input_fingerprint")
+        or product_manifest.get("portfolio_input_fingerprint")
+        or {}
+    )
+    if not isinstance(fingerprint, dict):
+        fingerprint = {}
+    return {
+        "activeHedgemateRun": product_summary.get("activeHedgemateRun"),
+        "activeScenarioRun": scenario_summary.get("activeScenarioRun") or product_summary.get("activeScenarioRun"),
+        "activeFinalRun": scenario_summary.get("activeFinalRun") or product_summary.get("activeFinalRun"),
+        "activeBacktestRun": product_summary.get("activeBacktestRun"),
+        "dataVersion": product_summary.get("dataVersion") or scenario_summary.get("dataVersion"),
+        "generatedAtUtc": product_summary.get("generatedAtUtc") or scenario_summary.get("generatedAtUtc"),
+        "portfolioInputSha256": product_bundle.get("portfolioInputSha256") or product_manifest.get("portfolioInputSha256"),
+        "portfolioFingerprintHash": fingerprint.get("hash"),
+    }
+
+
+def write_dashboard_snapshot(kind, payload, metadata=None):
+    wrapper = {
+        "snapshotVersion": SNAPSHOT_VERSION,
+        "kind": kind,
+        "createdAtUtc": _utc_iso(),
+        "metadata": metadata or dashboard_snapshot_metadata(),
+        "payload": payload,
+    }
+    path = dashboard_snapshot_path(kind)
+    write_text_atomic(path, json.dumps(wrapper, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def read_dashboard_snapshot(kind):
+    path = dashboard_snapshot_path(kind)
+    payload = read_json(path, {}) if path.exists() else {}
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("snapshotVersion") != SNAPSHOT_VERSION:
+        return None
+    if payload.get("kind") != kind:
+        return None
+    if not isinstance(payload.get("payload"), dict):
+        return None
+    return payload
+
+
+def dashboard_snapshot_matches(kind, snapshot, product_manifest=None, scenario_manifest=None):
+    if not snapshot:
+        return False
+    metadata = snapshot.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        return False
+    current = dashboard_snapshot_metadata(product_manifest=product_manifest, scenario_manifest=scenario_manifest)
+    if kind == "scenario_dashboard":
+        required_keys = ("activeFinalRun", "activeScenarioRun")
+    elif kind == "product_dashboard":
+        required_keys = ("activeHedgemateRun", "activeBacktestRun", "dataVersion", "portfolioInputSha256", "portfolioFingerprintHash")
+    else:
+        required_keys = ("activeHedgemateRun", "activeFinalRun", "activeBacktestRun", "dataVersion")
+    for key in required_keys:
+        current_value = current.get(key)
+        if current_value and metadata.get(key) != current_value:
+            return False
+    return True
+
+
+def load_dashboard_snapshot_payload(kind, require_current=True):
+    snapshot = read_dashboard_snapshot(kind)
+    if not snapshot:
+        return None
+    if require_current and not dashboard_snapshot_matches(kind, snapshot):
+        return None
+    payload = dict(snapshot["payload"])
+    payload["snapshot"] = {
+        "version": snapshot.get("snapshotVersion"),
+        "kind": kind,
+        "createdAtUtc": snapshot.get("createdAtUtc"),
+        "metadata": snapshot.get("metadata") or {},
+        "current": True,
+    }
+    return payload
+
+
+def snapshot_unavailable_payload(kind, product_manifest=None, scenario_manifest=None):
+    metadata = dashboard_snapshot_metadata(product_manifest=product_manifest, scenario_manifest=scenario_manifest)
+    freshness = {}
+    try:
+        freshness = load_data_freshness(manifest=product_manifest) if kind != "scenario_dashboard" else load_data_freshness()
+    except Exception:
+        freshness = {}
+    status = "REFRESHING" if (
+        latest_running_market_refresh_job()
+        or latest_running_intraday_news_job()
+        or has_running_analysis_job()
+    ) else "STALE"
+    return {
+        "ok": False,
+        "snapshotUnavailable": True,
+        "snapshotKind": kind,
+        "status": status,
+        "productStatus": status if kind == "product_dashboard" else None,
+        "message": "Dashboard snapshot is not available for the active run yet.",
+        "activeBundle": {
+            "hedgemate_run": metadata.get("activeHedgemateRun"),
+            "scenario_run": metadata.get("activeScenarioRun"),
+            "final_market_state_run": metadata.get("activeFinalRun"),
+            "backtest_run": metadata.get("activeBacktestRun"),
+            "data_version": metadata.get("dataVersion"),
+            "generated_at_utc": metadata.get("generatedAtUtc"),
+        },
+        "dataFreshness": product_data_freshness_response(freshness),
+        "marketStateFreshness": {
+            "displayDate": display_reference_date(),
+            "primarySource": "snapshot_unavailable",
+            "intradayFresh": bool(freshness.get("intradayNowcastFresh")),
+        } if kind == "scenario_dashboard" else None,
+        "snapshot": {
+            "kind": kind,
+            "current": False,
+            "metadata": metadata,
+        },
+    }
+
+
+def write_scenario_dashboard_snapshot():
+    payload = load_scenario_dashboard_data(include_intraday_news=True)
+    return write_dashboard_snapshot("scenario_dashboard", payload)
+
+
+def write_product_dashboard_snapshot():
+    payload = load_product_dashboard_data(compact=False)
+    return write_dashboard_snapshot("product_dashboard", payload)
+
+
+def write_service_status_snapshot():
+    payload = load_service_status()
+    return write_dashboard_snapshot("service_status", payload)
+
+
+def refresh_dashboard_snapshots(kinds):
+    written = []
+    for kind in kinds:
+        try:
+            if kind == "scenario_dashboard":
+                written.append(str(write_scenario_dashboard_snapshot()))
+            elif kind == "product_dashboard":
+                written.append(str(write_product_dashboard_snapshot()))
+            elif kind == "service_status":
+                written.append(str(write_service_status_snapshot()))
+        except Exception as exc:
+            print(
+                f"HedgeMate dashboard snapshot refresh failed for {kind}: {sanitize_diagnostic_text(str(exc))}",
+                file=sys.stderr,
+                flush=True,
+            )
+    return written
+
+
 def resolve_manifest_artifact(manifest, key, default_dir):
     raw_path = manifest.get(f"{key}_path") or manifest.get(key)
     if not raw_path:
@@ -3721,6 +3902,7 @@ def _run_pipeline_job(job_id, prepared_request, runner):
             error=None,
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
+        refresh_dashboard_snapshots(("product_dashboard", "service_status"))
     except Exception as exc:
         diagnostics = exception_diagnostics(exc)
         if diagnostics:
@@ -3931,6 +4113,7 @@ def _run_refresh_market_data_job(job_id, payload, runner):
             error=None,
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
+        refresh_dashboard_snapshots(("scenario_dashboard", "service_status"))
         return
 
     if mode == "market_data_only" and not force_full_refresh:
@@ -4015,6 +4198,7 @@ def _run_refresh_market_data_job(job_id, payload, runner):
             error=None,
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
+        refresh_dashboard_snapshots(("scenario_dashboard", "service_status"))
         return
 
     if mode == "portfolio_reanalysis":
@@ -4036,6 +4220,7 @@ def _run_refresh_market_data_job(job_id, payload, runner):
             error=None,
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
+        refresh_dashboard_snapshots(("product_dashboard", "service_status"))
         return
 
     cleanup_paths = []
@@ -4149,6 +4334,7 @@ def _run_refresh_market_data_job(job_id, payload, runner):
             error=None,
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
+        refresh_dashboard_snapshots(("scenario_dashboard", "product_dashboard", "service_status"))
     finally:
         for path in cleanup_paths:
             try:
@@ -4439,6 +4625,7 @@ def _run_intraday_news_overlay_job(job_id, payload, runner):
         error=None,
         completedAt=datetime.now().isoformat(timespec="seconds"),
     )
+    refresh_dashboard_snapshots(("scenario_dashboard", "service_status"))
 
 
 def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread_factory=threading.Thread):
@@ -7521,8 +7708,8 @@ def load_service_status(selected_portfolio_id=None, selected_portfolio_hash=None
     reference_only_count = None
     fail_gate_count = None
     if product_status == "READY":
-        try:
-            active_dashboard = load_product_dashboard_data(manifest, compact=True)
+        active_dashboard = load_dashboard_snapshot_payload("product_dashboard")
+        if active_dashboard:
             active_product_status = normalize_product_status(
                 active_dashboard.get("status") or active_dashboard.get("productStatus")
             )
@@ -7533,12 +7720,10 @@ def load_service_status(selected_portfolio_id=None, selected_portfolio_hash=None
             formal_recommendation_count = recommendation_decision.get("formalRecommendationCount")
             reference_only_count = recommendation_decision.get("referenceOnlyCount")
             fail_gate_count = recommendation_decision.get("failGateCount")
-        except Exception as exc:
-            blockers.append("product_dashboard_status_unavailable")
-            product_status = "BLOCKED"
-            active_product_status = "BLOCKED"
-            active_raw_product_status = "BLOCKED"
-            recommendation_state = "PRODUCT_DASHBOARD_ERROR"
+        else:
+            active_product_status = "REFRESHING" if has_running_analysis_job() else "STALE"
+            active_raw_product_status = active_product_status
+            recommendation_state = "PRODUCT_DASHBOARD_SNAPSHOT_UNAVAILABLE"
     market_refreshing = bool(latest_running_market_refresh_job(mode="market_data_only"))
     intraday_refreshing = bool(latest_running_market_refresh_job(mode="intraday_nowcast"))
     news_refreshing = bool(latest_running_intraday_news_job())
@@ -7567,17 +7752,7 @@ def load_service_status(selected_portfolio_id=None, selected_portfolio_hash=None
                 if running:
                     selected_portfolio_status = "REFRESHING"
                 elif latest_success:
-                    selected_dashboard = load_product_dashboard_for_saved_portfolio(
-                        user_id,
-                        portfolio_id=portfolio.get("portfolioId") if selected_portfolio_id else None,
-                        portfolio_hash=portfolio.get("portfolioHash") if not selected_portfolio_id else None,
-                        compact=True,
-                    )
-                    selected_portfolio_status = normalize_product_status(
-                        selected_dashboard.get("status") or selected_dashboard.get("productStatus")
-                    )
-                    selected_product_status = selected_portfolio_status
-                    selected_raw_product_status = selected_dashboard.get("rawProductStatus") or selected_dashboard.get("productStatus")
+                    selected_portfolio_status = "READY"
                 else:
                     selected_portfolio_status = "NEEDS_ANALYSIS"
             else:
@@ -8015,6 +8190,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             try:
                 params = parse_qs(parsed.query)
                 compact = _bool_for_api(params.get("compact", [False])[0], default=False)
+                live = _bool_for_api(params.get("live", [False])[0], default=False)
                 portfolio_id = params.get("portfolio_id", [None])[0]
                 portfolio_hash = params.get("portfolio_hash", [None])[0]
                 if portfolio_id or portfolio_hash:
@@ -8027,6 +8203,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         portfolio_hash=portfolio_hash,
                         compact=compact,
                     )
+                elif not live:
+                    dashboard = load_dashboard_snapshot_payload("product_dashboard")
+                    if dashboard is None:
+                        dashboard = snapshot_unavailable_payload("product_dashboard")
                 else:
                     dashboard = load_product_dashboard_data(compact=compact)
                 if compact:
@@ -8049,6 +8229,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             params = parse_qs(parsed.query)
             requested = params.get("run_id", [None])[0]
             try:
+                if not requested:
+                    dashboard = load_dashboard_snapshot_payload("scenario_dashboard")
+                    if dashboard is None:
+                        dashboard = snapshot_unavailable_payload("scenario_dashboard")
+                    return self._json_response(dashboard)
                 return self._json_response(load_scenario_dashboard_data(requested))
             except FileNotFoundError as exc:
                 return self._json_response({"error": str(exc)}, status=HTTPStatus.NOT_FOUND)

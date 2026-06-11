@@ -307,6 +307,7 @@ export const ImprovementReport = () => {
   const visibleReviewCandidateRows = showAllActionCards ? reviewCandidateRows : reviewCandidateRows.slice(0, 3);
   const hasMoreActionCards = actionCards.length > 3 || (actionCards.length === 0 && reviewCandidateRows.length > 3);
   const hiddenActionCardCount = Math.max(0, (actionCards.length > 0 ? actionCards.length : reviewCandidateRows.length) - 3);
+  const apiErrorIsTimeout = /요청 시간이 초과|timeout|timed out/i.test(apiError || '');
 
   const loadBackendDashboard = async (requestOptions = {}) => {
     setIsLoading(true);
@@ -344,7 +345,9 @@ export const ImprovementReport = () => {
       return { dashboard };
     } catch (error) {
       if (error.name === 'AbortError') return null;
-      setApiError(error.message || 'HedgeMate 백엔드 연결에 실패했습니다.');
+      setApiError(error.name === 'TimeoutError'
+        ? '요청 시간이 초과되었습니다. 분석 결과는 백그라운드에서 생성 중일 수 있으니 잠시 후 다시 조회하세요.'
+        : (error.message || 'HedgeMate 백엔드 연결에 실패했습니다.'));
       setDashboardPayload(null);
       return null;
     } finally {
@@ -877,9 +880,13 @@ export const ImprovementReport = () => {
         <div className="backend-error-card mt-6">
           <AlertCircle size={24} />
           <div>
-            <h3>HedgeMate 백엔드 연결 실패</h3>
+            <h3>{apiErrorIsTimeout ? 'HedgeMate 응답 시간 초과' : 'HedgeMate 백엔드 연결 실패'}</h3>
             <p>{apiError}</p>
-            <p className="text-xs text-secondary mt-2">백엔드가 꺼져 있으면 프론트는 대기 상태로 남습니다. `python HedgeMate/scripts/serve_dashboard.py --host 127.0.0.1 --port 8766`로 서버를 켠 뒤 다시 조회하세요.</p>
+            <p className="text-xs text-secondary mt-2">
+              {apiErrorIsTimeout
+                ? '서버가 꺼진 상태가 아니라 조회 응답이 제한 시간을 넘긴 상태일 수 있습니다. 최신 snapshot이 생성되면 다시 빠르게 표시됩니다.'
+                : '백엔드가 꺼져 있으면 프론트는 대기 상태로 남습니다. `python HedgeMate/scripts/serve_dashboard.py --host 127.0.0.1 --port 8766`로 서버를 켠 뒤 다시 조회하세요.'}
+            </p>
           </div>
         </div>
       )}

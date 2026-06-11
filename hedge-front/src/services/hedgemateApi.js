@@ -144,7 +144,15 @@ const hedgemateFetch = async (path, options = {}) => {
   });
 
   if (!response.ok) {
-    throw new Error(await parseApiError(response));
+    const message = await parseApiError(response);
+    const error = new Error(message);
+    if (response.status === 502 && /timed out|timeout|시간.*초과/i.test(message)) {
+      error.name = 'TimeoutError';
+      error.message = '요청 시간이 초과되었습니다. 계산은 백그라운드에서 진행 중일 수 있으니 잠시 후 다시 조회하세요.';
+    } else {
+      error.name = 'ApiError';
+    }
+    throw error;
   }
   return response.json();
 };
@@ -220,6 +228,16 @@ const serverPortfolioId = (portfolio) => {
 
 export const getProductDashboard = (options = {}) => {
   const compact = options.compact !== false;
+  const snapshotRead = options.snapshot !== false;
+  if (snapshotRead) {
+    const params = new URLSearchParams();
+    if (compact) params.set('compact', '1');
+    const query = params.toString();
+    return hedgemateFetch(`/product-dashboard${query ? `?${query}` : ''}`, {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
   if (options.portfolio) {
     const portfolioId = serverPortfolioId(options.portfolio);
     if (portfolioId) {
@@ -248,7 +266,11 @@ export const getProductDashboard = (options = {}) => {
       }),
     });
   }
-  return hedgemateFetch(`/product-dashboard${compact ? '?compact=1' : ''}`, {
+  const params = new URLSearchParams();
+  if (compact) params.set('compact', '1');
+  if (options.live) params.set('live', '1');
+  const query = params.toString();
+  return hedgemateFetch(`/product-dashboard${query ? `?${query}` : ''}`, {
     signal: options.signal,
     timeoutMs: options.timeoutMs,
   });
