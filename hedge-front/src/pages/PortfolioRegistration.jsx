@@ -4,7 +4,7 @@ import { Button } from '../components/Button';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePortfolios } from '../context/PortfolioContext';
 import { getTickerQuote, searchTickers } from '../services/yahooFinance';
-import { getAssets, lookupAssetPrice } from '../services/hedgemateApi';
+import { extractPortfolioFromImage, getAssets, lookupAssetPrice } from '../services/hedgemateApi';
 import { debounce, ASSET_DATABASE, isKoreanTicker, normalizeTickerSymbol, searchAssetDatabase } from '../utils/helpers';
 import { getConcentrationLabel, getPortfolioConcentrationSummary } from '../utils/portfolioConcentration';
 import './PortfolioRegistration.css';
@@ -14,6 +14,65 @@ let backendAssetOptionsPromise = null;
 const BACKEND_EMPTY_LIST_LIMIT = 160;
 const BACKEND_SEARCH_LIMIT = 80;
 const LOCAL_FALLBACK_LIMIT = 12;
+const OCR_DIRECT_UPLOAD_LIMIT_BYTES = 3.5 * 1024 * 1024;
+const OCR_MAX_IMAGE_DIMENSION = 2200;
+
+const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onerror = () => reject(reader.error || new Error('이미지를 읽지 못했습니다.'));
+  reader.readAsDataURL(file);
+});
+
+const loadImageFromFile = (file) => new Promise((resolve, reject) => {
+  const url = URL.createObjectURL(file);
+  const image = new Image();
+  image.onload = () => {
+    URL.revokeObjectURL(url);
+    resolve(image);
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(url);
+    reject(new Error('이미지를 열 수 없습니다.'));
+  };
+  image.src = url;
+});
+
+const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
+  canvas.toBlob((blob) => resolve(blob), type, quality);
+});
+
+const prepareImageForOcr = async (file) => {
+  const supportedType = /image\/(png|jpeg|jpg|webp|gif)/i.test(file.type || '');
+  if (supportedType && file.size <= OCR_DIRECT_UPLOAD_LIMIT_BYTES) {
+    return {
+      dataUrl: await readFileAsDataUrl(file),
+      mimeType: file.type === 'image/jpg' ? 'image/jpeg' : file.type,
+    };
+  }
+
+  const image = await loadImageFromFile(file);
+  const scale = Math.min(
+    1,
+    OCR_MAX_IMAGE_DIMENSION / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height)
+  );
+  const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+  const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('이미지 변환을 위한 캔버스를 사용할 수 없습니다.');
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+  const blob = await canvasToBlob(canvas, 'image/jpeg', 0.92);
+  if (!blob) throw new Error('이미지 변환에 실패했습니다.');
+  return {
+    dataUrl: await readFileAsDataUrl(blob),
+    mimeType: 'image/jpeg',
+  };
+};
 
 const searchBackendAssetOptions = async (query, limit = BACKEND_SEARCH_LIMIT) => {
   if (!backendAssetOptionsPromise) {
@@ -71,6 +130,8 @@ export const PortfolioRegistration = () => {
   const [dragOver, setDragOver] = useState(false);
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrError, setOcrError] = useState('');
+  const [ocrWarnings, setOcrWarnings] = useState([]);
   const nextId = useRef(2);
   const [activeRowId, setActiveRowId] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
@@ -340,95 +401,63 @@ export const PortfolioRegistration = () => {
   const processOcr = async (file) => {
     setIsOcrProcessing(true);
     setOcrProgress(0);
+    setOcrError('');
+    setOcrWarnings([]);
     try {
-      const { default: Tesseract } = await import('tesseract.js');
-      const result = await Tesseract.recognize(file, 'eng+kor', {
-        logger: m => {
-          if (m.status === 'recognizing text') {
-            setOcrProgress(m.progress);
-          }
-        }
+      setOcrProgress(0.08);
+      const imagePayload = await prepareImageForOcr(file);
+      setOcrProgress(0.32);
+      const result = await extractPortfolioFromImage({
+        imageBase64: imagePayload.dataUrl,
+        fileName: file.name,
+        mimeType: imagePayload.mimeType,
       });
-      
-      const text = result.data.text;
-      console.log('Raw OCR Result:', text);
-      const lines = text.split('\n');
-      const parsedRows = [];
-      
-      lines.forEach(line => {
-        const cleanLine = line.trim().replace(/,/g, '');
-        if (!cleanLine) return;
-        
-        // Skip header lines
-        if (cleanLine.toUpperCase().includes('TICKER') || cleanLine.toUpperCase().includes('QUANTITY') || cleanLine.toUpperCase().includes('티커')) return;
-
-        // Extract all numeric values
-        const numbers = cleanLine.match(/\d+(?:\.\d+)?/g);
-        
-        // Extract words
-        const words = cleanLine.split(/\s+/);
-        if (words.length > 0) {
-          // Assume the first likely valid word is the ticker
-          let maybeTicker = '';
-          let tickerStartIdx = 0;
-          for (let i = 0; i < words.length; i++) {
-             let cleanWord = words[i].replace(/[^a-zA-Z.]/g, '').toUpperCase();
-             // Remove any trailing/leading dots which are likely from numbering (e.g. "1.")
-             cleanWord = cleanWord.replace(/^\.+|\.+$/g, '');
-             
-             // Must be 1-6 chars, MUST contain at least one letter
-             if (/^[A-Z.]{1,6}$/.test(cleanWord) && /[A-Z]/.test(cleanWord) && cleanWord !== 'AVG' && cleanWord !== 'COST') {
-               maybeTicker = cleanWord;
-               break;
-             }
-             tickerStartIdx += words[i].length + 1;
-          }
-
-          if (maybeTicker && numbers && numbers.length >= 2) {
-             const qty = parseFloat(numbers[numbers.length - 2]);
-             const cost = parseFloat(numbers[numbers.length - 1]);
-             
-             // Extract optional name between ticker and the numbers
-             const restOfStr = cleanLine.substring(tickerStartIdx + maybeTicker.length);
-             const firstNumIdx = restOfStr.search(/\d/);
-             let name = '';
-             if (firstNumIdx !== -1) {
-               name = restOfStr.substring(0, firstNumIdx).replace(/[^\w가-힣\s]/g, '').trim();
-             }
-
-             const upperTicker = normalizeTickerSymbol(maybeTicker);
-             const currency = (TICKER_DB[upperTicker]?.currency) || (isKoreanTicker(upperTicker) ? 'KRW' : 'USD');
-             parsedRows.push({
-               id: nextId.current++,
-               ticker: upperTicker,
-               name: name || '',
-               qty,
-               cost,
-               currency,
-             });
-          }
-        }
-      });
+      setOcrProgress(0.86);
+      const parsedRows = (result.rows || [])
+        .filter((row) => row.ticker || row.name)
+        .map((row) => {
+          const upperTicker = normalizeTickerSymbol(row.ticker || row.name);
+          const currency = row.currency || (TICKER_DB[upperTicker]?.currency) || (isKoreanTicker(upperTicker) ? 'KRW' : 'USD');
+          return {
+            id: nextId.current++,
+            ticker: upperTicker,
+            name: row.name || TICKER_DB[upperTicker]?.name || '',
+            qty: Number(row.quantity ?? row.qty) || 0,
+            cost: Number(row.price ?? row.cost) || 0,
+            currency,
+          };
+        });
 
       if (parsedRows.length > 0) {
         setRows(prev => {
-          // If previous exists but only 1 empty row, replace
           const isDefault = prev.length === 1 && prev[0].ticker === '';
           return isDefault ? parsedRows : [...prev, ...parsedRows];
         });
+        const rowWarnings = (result.rows || [])
+          .flatMap((row) => row.warnings || [])
+          .filter(Boolean);
+        setOcrWarnings([...(result.warnings || []), ...rowWarnings].slice(0, 6));
+      } else {
+        setOcrWarnings(['이미지에서 자동으로 등록할 수 있는 보유 종목 행을 찾지 못했습니다.']);
       }
+      setOcrProgress(1);
     } catch(err) {
       console.error(err);
-      alert('이미지 분석 중 오류가 발생했습니다.');
+      const message = err.message || '이미지 분석 중 오류가 발생했습니다.';
+      setOcrError(message);
+      alert(message);
     } finally {
       setIsOcrProcessing(false);
-      setOcrProgress(0);
     }
   };
 
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!file.type.startsWith('image/')) {
+        alert('이미지 파일만 업로드 가능합니다.');
+        return;
+      }
       setUploadedFile(file);
       processOcr(file);
     }
@@ -529,6 +558,8 @@ export const PortfolioRegistration = () => {
     setPurpose('장기 가치 투자');
     setRows([{ id: nextId.current++, ticker: '', name: '', qty: 0, cost: 0, currency: 'USD' }]);
     setUploadedFile(null);
+    setOcrError('');
+    setOcrWarnings([]);
   };
 
   if (showSuccess && createdPortfolio) {
@@ -660,18 +691,38 @@ export const PortfolioRegistration = () => {
                   </div>
                 </div>
                 {!isOcrProcessing && (
-                  <button onClick={() => setUploadedFile(null)} style={{color:'var(--text-secondary)'}}><X size={16}/></button>
+                  <button
+                    onClick={() => {
+                      setUploadedFile(null);
+                      setOcrError('');
+                      setOcrWarnings([]);
+                    }}
+                    style={{color:'var(--text-secondary)'}}
+                  >
+                    <X size={16}/>
+                  </button>
                 )}
               </div>
               <div className="upload-progress mt-4">
                 <div 
-                  className="upload-progress-fill" 
+                  className={`upload-progress-fill ${ocrError ? 'error' : ''}`}
                   style={{ width: isOcrProcessing ? `${Math.max(10, ocrProgress * 100)}%` : '100%', transition: 'width 0.3s ease' }}
                 ></div>
               </div>
-              <div className="text-xs mt-2" style={{ color: isOcrProcessing ? 'var(--text-secondary)' : 'var(--accent-light)' }}>
-                {isOcrProcessing ? '구조화된 테이블 데이터를 파싱 중입니다...' : '✓ 추출 완료! 아래 표에서 데이터를 확인/수정하세요.'}
+              <div className="text-xs mt-2" style={{ color: ocrError ? '#f87171' : isOcrProcessing ? 'var(--text-secondary)' : 'var(--accent-light)' }}>
+                {isOcrProcessing
+                  ? 'AI가 보유 종목 표를 구조화하는 중입니다...'
+                  : ocrError
+                    ? `분석 실패: ${ocrError}`
+                    : '✓ 추출 완료! 아래 표에서 데이터를 확인/수정하세요.'}
               </div>
+              {!isOcrProcessing && ocrWarnings.length > 0 && (
+                <ul className="ocr-warning-list">
+                  {ocrWarnings.map((warning, index) => (
+                    <li key={`${warning}-${index}`}>{warning}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           ) : (
             <div 

@@ -322,6 +322,15 @@ export const previewPortfolio = (portfolio, options = {}) => {
   });
 };
 
+export const extractPortfolioFromImage = (payload, options = {}) => {
+  return hedgemateFetch('/portfolio/ocr', {
+    method: 'POST',
+    signal: options.signal,
+    timeoutMs: options.timeoutMs ?? 120 * 1000,
+    body: JSON.stringify(payload),
+  });
+};
+
 export const runPortfolioAnalysis = (portfolio, options = {}) => {
   const portfolioId = serverPortfolioId(portfolio);
   if (portfolioId) {

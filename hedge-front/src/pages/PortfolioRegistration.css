@@ -256,6 +256,18 @@
   border-radius: 2px;
 }
 
+.upload-progress-fill.error {
+  background: linear-gradient(to right, #fb7185, #ef4444);
+}
+
+.ocr-warning-list {
+  margin-top: 0.75rem;
+  padding-left: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
 .portfolio-preview {
   padding: 1rem;
   background-color: rgba(168, 85, 247, 0.05);

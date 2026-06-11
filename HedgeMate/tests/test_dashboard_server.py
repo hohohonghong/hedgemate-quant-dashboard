@@ -1,3 +1,4 @@
+import base64
 import csv
 import importlib.util
 import io
@@ -427,6 +428,76 @@ class DashboardServerTests(unittest.TestCase):
         self.assertIn("테슬라", assets["TSLA"]["aliases"])
         self.assertIn("금", assets["GLD"]["aliases"])
         self.assertEqual(assets["005930.KS"]["assetClass"], "국내주식")
+
+    def test_portfolio_ocr_extracts_rows_with_openai_response_schema(self):
+        image_base64 = base64.b64encode(b"fake-image").decode("ascii")
+        captured = {}
+
+        def fake_request(request_payload, api_key, timeout_seconds):
+            captured["payload"] = request_payload
+            captured["api_key"] = api_key
+            captured["timeout_seconds"] = timeout_seconds
+            return {
+                "output_text": json.dumps(
+                    {
+                        "rows": [
+                            {
+                                "ticker": "005930",
+                                "name": "삼성전자",
+                                "quantity": 3,
+                                "unitPrice": 74000,
+                                "currency": "KRW",
+                                "confidence": 0.94,
+                                "note": "",
+                            }
+                        ],
+                        "warnings": ["확인 필요"],
+                    },
+                    ensure_ascii=False,
+                )
+            }
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_KEY": "test-openai-key",
+                "OPENAI_API_KEY_FILE": "",
+                "OPENAI_OCR_MODEL": "gpt-5.4-mini",
+            },
+            clear=False,
+        ):
+            result = serve_dashboard.extract_portfolio_rows_from_openai_ocr(
+                {"imageBase64": f"data:image/png;base64,{image_base64}", "mimeType": "image/png"},
+                user_id=123,
+                request_fn=fake_request,
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["provider"], "openai")
+        self.assertEqual(result["model"], "gpt-5.4-mini")
+        self.assertEqual(result["keySource"], "OPENAI_API_KEY")
+        self.assertEqual(result["warnings"], ["확인 필요"])
+        self.assertEqual(result["rows"][0]["ticker"], "005930.KS")
+        self.assertEqual(result["rows"][0]["name"], "삼성전자")
+        self.assertEqual(result["rows"][0]["quantity"], 3.0)
+        self.assertEqual(result["rows"][0]["price"], 74000.0)
+        self.assertEqual(result["rows"][0]["currency"], "KRW")
+        self.assertTrue(result["rows"][0]["resolved"])
+        self.assertEqual(captured["api_key"], "test-openai-key")
+        self.assertFalse(captured["payload"]["store"])
+        content = captured["payload"]["input"][0]["content"]
+        self.assertEqual(content[1]["type"], "input_image")
+        self.assertEqual(content[1]["detail"], "high")
+        self.assertTrue(content[1]["image_url"].startswith("data:image/png;base64,"))
+        self.assertEqual(captured["payload"]["text"]["format"]["type"], "json_schema")
+
+    def test_portfolio_ocr_rejects_oversized_image_payload(self):
+        image_base64 = base64.b64encode(b"abcd").decode("ascii")
+        with mock.patch.object(serve_dashboard, "PORTFOLIO_OCR_MAX_IMAGE_BYTES", 3):
+            with self.assertRaises(serve_dashboard.RequestEntityTooLarge):
+                serve_dashboard.normalize_portfolio_ocr_image(
+                    {"imageBase64": f"data:image/png;base64,{image_base64}", "mimeType": "image/png"}
+                )
 
     def test_find_available_run_ids_sorts_desc(self):
         with tempfile.TemporaryDirectory() as tmp:

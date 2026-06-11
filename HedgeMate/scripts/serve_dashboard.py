@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import base64
+import binascii
 import csv
 import hmac
 import hashlib
@@ -76,6 +78,20 @@ SNAPSHOT_KINDS = {
 }
 LOCALHOST_CLIENTS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 MAX_JSON_BODY_BYTES = 2 * 1024 * 1024
+
+
+def env_int(name, default):
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return int(default)
+
+
+PORTFOLIO_OCR_MAX_IMAGE_BYTES = env_int("PORTFOLIO_OCR_MAX_IMAGE_BYTES", 4 * 1024 * 1024)
+PORTFOLIO_OCR_MAX_BODY_BYTES = env_int("PORTFOLIO_OCR_MAX_BODY_BYTES", 6 * 1024 * 1024)
+PORTFOLIO_OCR_TIMEOUT_SECONDS = env_int("PORTFOLIO_OCR_TIMEOUT_SECONDS", 60)
+OPENAI_RESPONSES_URL = os.environ.get("OPENAI_RESPONSES_URL", "https://api.openai.com/v1/responses")
+DEFAULT_OPENAI_OCR_MODEL = "gpt-5.4-mini"
 RUN_INPUT_DIR = ROOT / "outputs" / "run_inputs"
 FRONTEND_UI_BASE = "http://127.0.0.1:5173"
 DEFAULT_CORS_ORIGINS = {
@@ -676,6 +692,311 @@ def resolve_asset_query(query):
         raise ValueError("검색 결과가 여러 개입니다. 더 정확한 자산명 또는 티커를 입력해 주세요.")
 
     raise ValueError("지원하지 않는 자산입니다. 목록에서 정확한 자산을 선택해 주세요.")
+
+
+def load_openai_api_key(project_root=None, env=None):
+    env = env or os.environ
+    project_root = project_root or ROOT.parent
+    key_file = str(env.get("OPENAI_API_KEY_FILE") or "").strip()
+    if key_file:
+        try:
+            key = Path(key_file).read_text(encoding="utf-8").strip()
+        except OSError:
+            key = ""
+        if key:
+            return key, "OPENAI_API_KEY_FILE"
+
+    env_key = str(env.get("OPENAI_API_KEY") or "").strip()
+    if env_key:
+        return env_key, "OPENAI_API_KEY"
+
+    default_path = Path(project_root) / ".secrets" / "openai_api_key.txt"
+    try:
+        key = default_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        key = ""
+    if key:
+        return key, "project/.secrets/openai_api_key.txt"
+    return None, "missing"
+
+
+def openai_ocr_model(env=None):
+    env = env or os.environ
+    return str(env.get("OPENAI_OCR_MODEL") or env.get("OPENAI_MODEL") or DEFAULT_OPENAI_OCR_MODEL).strip()
+
+
+def portfolio_ocr_response_schema():
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "rows": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "ticker": {"type": "string"},
+                        "name": {"type": "string"},
+                        "quantity": {"type": "number"},
+                        "unitPrice": {"type": "number"},
+                        "currency": {"type": "string"},
+                        "confidence": {"type": "number"},
+                        "note": {"type": "string"},
+                    },
+                    "required": ["ticker", "name", "quantity", "unitPrice", "currency", "confidence", "note"],
+                },
+            },
+            "warnings": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {"type": "string"},
+            },
+        },
+        "required": ["rows", "warnings"],
+    }
+
+
+def portfolio_ocr_universe_prompt():
+    rows = []
+    for asset in asset_options():
+        aliases = ", ".join(str(alias) for alias in (asset.get("aliases") or [])[:4] if alias)
+        suffix = f" | aliases: {aliases}" if aliases else ""
+        rows.append(f"- {asset.get('ticker')}: {asset.get('label')}{suffix}")
+    return "\n".join(rows)
+
+
+def normalize_portfolio_ocr_image(payload):
+    payload = payload or {}
+    raw = str(
+        payload.get("imageBase64")
+        or payload.get("imageDataUrl")
+        or payload.get("dataUrl")
+        or ""
+    ).strip()
+    mime_type = str(payload.get("mimeType") or payload.get("contentType") or "").strip().lower()
+    if not raw:
+        raise ValueError("이미지 데이터가 필요합니다.")
+
+    match = re.fullmatch(r"data:([^;,]+);base64,(.+)", raw, flags=re.IGNORECASE | re.DOTALL)
+    if match:
+        mime_type = match.group(1).strip().lower()
+        raw = match.group(2).strip()
+
+    if mime_type == "image/jpg":
+        mime_type = "image/jpeg"
+    allowed = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+    if mime_type not in allowed:
+        raise ValueError("PNG, JPEG, WEBP, GIF 이미지 파일만 업로드할 수 있습니다.")
+
+    try:
+        image_bytes = base64.b64decode(raw, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("이미지 base64 데이터를 해석할 수 없습니다.") from exc
+    if not image_bytes:
+        raise ValueError("이미지 데이터가 비어 있습니다.")
+    if len(image_bytes) > PORTFOLIO_OCR_MAX_IMAGE_BYTES:
+        raise RequestEntityTooLarge(f"이미지 크기는 {PORTFOLIO_OCR_MAX_IMAGE_BYTES} bytes 이하만 허용됩니다.")
+
+    normalized = base64.b64encode(image_bytes).decode("ascii")
+    return {
+        "dataUrl": f"data:{mime_type};base64,{normalized}",
+        "mimeType": mime_type,
+        "sizeBytes": len(image_bytes),
+        "sha256": hashlib.sha256(image_bytes).hexdigest(),
+    }
+
+
+def post_openai_responses_json(request_payload, api_key, timeout_seconds=PORTFOLIO_OCR_TIMEOUT_SECONDS):
+    request = urllib.request.Request(
+        OPENAI_RESPONSES_URL,
+        data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds, context=yahoo_ssl_context()) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+            parsed = json.loads(body)
+            detail = parsed.get("error", {}).get("message") if isinstance(parsed.get("error"), dict) else ""
+        except Exception:
+            detail = ""
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(f"OpenAI 이미지 분석 요청이 실패했습니다. HTTP {exc.code}{suffix}") from exc
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"OpenAI 이미지 분석 요청이 실패했습니다: {exc}") from exc
+
+
+def openai_output_text(response):
+    text_parts = []
+    direct_text = response.get("output_text") if isinstance(response, dict) else None
+    if direct_text:
+        text_parts.append(str(direct_text))
+    for item in (response or {}).get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        for content in item.get("content") or []:
+            if isinstance(content, dict) and content.get("type") in {"output_text", "text"}:
+                text_parts.append(str(content.get("text") or ""))
+    text = "".join(text_parts).strip()
+    if not text:
+        raise ValueError("OpenAI 응답에 OCR 결과 텍스트가 없습니다.")
+    return text
+
+
+def parse_openai_portfolio_ocr_response(response):
+    try:
+        parsed = json.loads(openai_output_text(response))
+    except json.JSONDecodeError as exc:
+        raise ValueError("OpenAI OCR 응답이 JSON 형식이 아닙니다.") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("OpenAI OCR 응답은 객체여야 합니다.")
+    rows = parsed.get("rows")
+    if not isinstance(rows, list):
+        raise ValueError("OpenAI OCR 응답에 rows 배열이 없습니다.")
+    return parsed
+
+
+def resolve_portfolio_ocr_asset(raw_ticker, raw_name):
+    labels = all_asset_labels()
+    candidates = [raw_ticker, raw_name]
+    for candidate in candidates:
+        if not str(candidate or "").strip():
+            continue
+        try:
+            return resolve_asset_query(candidate), True
+        except ValueError:
+            pass
+
+    ticker = str(raw_ticker or "").strip().upper()
+    if ticker in labels:
+        return ticker, True
+    compact = re.sub(r"[^0-9A-Za-z]", "", ticker)
+    if re.fullmatch(r"\d{6}", compact):
+        for suffix in (".KS", ".KQ"):
+            candidate = f"{compact}{suffix}"
+            if candidate in labels:
+                return candidate, True
+    return ticker or str(raw_name or "").strip(), False
+
+
+def normalize_portfolio_ocr_rows(parsed):
+    rows = []
+    warnings = [str(item).strip() for item in parsed.get("warnings") or [] if str(item).strip()]
+    for index, raw in enumerate(parsed.get("rows") or []):
+        if not isinstance(raw, dict):
+            continue
+        raw_ticker = str(raw.get("ticker") or "").strip()
+        raw_name = str(raw.get("name") or "").strip()
+        ticker, resolved = resolve_portfolio_ocr_asset(raw_ticker, raw_name)
+        quantity = _optional_number(raw.get("quantity"))
+        unit_price = _optional_number(raw.get("unitPrice") if "unitPrice" in raw else raw.get("price"))
+        confidence = _optional_number(raw.get("confidence"))
+        confidence = max(0.0, min(1.0, confidence if confidence is not None else 0.0))
+        currency = str(raw.get("currency") or "").strip().upper()
+        if currency not in {"KRW", "USD", "JPY", "EUR", "CNY", "HKD"}:
+            currency = ticker_currency(ticker)
+        row_warnings = []
+        if not resolved:
+            row_warnings.append("지원 자산 목록과 자동 매칭되지 않았습니다. 티커를 확인해 주세요.")
+        if not quantity or quantity <= 0:
+            row_warnings.append("수량을 확인해 주세요.")
+            quantity = 0.0
+        if not unit_price or unit_price <= 0:
+            row_warnings.append("평균 단가를 확인해 주세요.")
+            unit_price = 0.0
+        note = str(raw.get("note") or "").strip()
+        if note:
+            row_warnings.append(note)
+        name = display_name(ticker) if resolved else raw_name
+        rows.append(
+            {
+                "rowIndex": index,
+                "ticker": ticker,
+                "name": name or ticker,
+                "quantity": float(quantity),
+                "qty": float(quantity),
+                "price": float(unit_price),
+                "cost": float(unit_price),
+                "currency": currency,
+                "confidence": round(confidence, 4),
+                "resolved": bool(resolved),
+                "warnings": row_warnings,
+            }
+        )
+    return rows, warnings
+
+
+def extract_portfolio_rows_from_openai_ocr(payload, *, user_id=None, request_fn=post_openai_responses_json):
+    api_key, key_source = load_openai_api_key()
+    if not api_key:
+        raise RuntimeError("OpenAI API key is not configured for portfolio image OCR.")
+    image = normalize_portfolio_ocr_image(payload)
+    model_name = openai_ocr_model()
+    safety_identifier = hashlib.sha256(f"hedgemate-ocr:{user_id or 'anonymous'}".encode("utf-8")).hexdigest()[:64]
+    request_payload = {
+        "model": model_name,
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "증권 계좌 또는 포트폴리오 캡처 이미지에서 보유 종목 행을 추출해 주세요.\n"
+                            "각 행의 ticker, 종목명, 보유수량, 평균단가 또는 표시된 1주당 가격, 통화를 반환합니다.\n"
+                            "총 평가금액을 unitPrice로 쓰지 말고, 수량과 총액만 보이면 총액/수량으로 계산합니다.\n"
+                            "한국 6자리 종목코드가 보이면 지원 목록에 맞는 경우 .KS/.KQ 티커로 정규화합니다.\n"
+                            "보이지 않는 종목은 추측하지 말고 confidence를 낮게 두며 note에 이유를 씁니다.\n\n"
+                            "지원 자산 목록:\n"
+                            f"{portfolio_ocr_universe_prompt()}"
+                        ),
+                    },
+                    {
+                        "type": "input_image",
+                        "image_url": image["dataUrl"],
+                        "detail": "high",
+                    },
+                ],
+            }
+        ],
+        "store": False,
+        "safety_identifier": safety_identifier,
+        "max_output_tokens": 1800,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "portfolio_ocr_rows",
+                "strict": True,
+                "schema": portfolio_ocr_response_schema(),
+            }
+        },
+    }
+    response = request_fn(request_payload, api_key=api_key, timeout_seconds=PORTFOLIO_OCR_TIMEOUT_SECONDS)
+    parsed = parse_openai_portfolio_ocr_response(response)
+    rows, warnings = normalize_portfolio_ocr_rows(parsed)
+    return {
+        "ok": True,
+        "provider": "openai",
+        "model": model_name,
+        "keySource": key_source,
+        "rowCount": len(rows),
+        "rows": rows,
+        "warnings": warnings,
+        "image": {
+            "mimeType": image["mimeType"],
+            "sizeBytes": image["sizeBytes"],
+            "sha256Prefix": image["sha256"][:16],
+        },
+    }
 
 
 def parse_float(value):
@@ -8314,6 +8635,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/run",
             "/api/price-lookup",
             "/api/portfolio/preview",
+            "/api/portfolio/ocr",
             "/api/refresh-market-data",
             "/api/refresh-intraday-news",
             "/api/product-dashboard",
@@ -8330,6 +8652,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if content_type != "application/json":
             return self._json_response({"error": "application/json 요청만 허용됩니다."}, status=HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
         try:
+            if parsed.path == "/api/portfolio/ocr":
+                user = self._require_user()
+                if not user:
+                    return
+                payload = self._read_json_body(max_bytes=PORTFOLIO_OCR_MAX_BODY_BYTES)
+                result = extract_portfolio_rows_from_openai_ocr(payload, user_id=user["user_id"])
+                return self._json_response(result)
             payload = self._read_json_body()
             if parsed.path == "/api/auth/register":
                 try:
@@ -8451,7 +8780,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return self._json_response({"error": "Portfolio not found"}, status=HTTPStatus.NOT_FOUND)
         return self._json_response({"ok": True})
 
-    def _read_json_body(self):
+    def _read_json_body(self, max_bytes=MAX_JSON_BODY_BYTES):
         raw_length = self.headers.get("Content-Length")
         if raw_length in (None, ""):
             raise ValueError("Content-Length header is required")
@@ -8461,8 +8790,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             raise ValueError("Content-Length header must be an integer") from exc
         if length < 0:
             raise ValueError("Content-Length header must be non-negative")
-        if length > MAX_JSON_BODY_BYTES:
-            raise RequestEntityTooLarge(f"JSON body exceeds {MAX_JSON_BODY_BYTES} bytes")
+        if length > max_bytes:
+            raise RequestEntityTooLarge(f"JSON body exceeds {max_bytes} bytes")
         try:
             return json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
         except json.JSONDecodeError as exc:
