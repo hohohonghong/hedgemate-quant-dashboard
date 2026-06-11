@@ -247,7 +247,8 @@ class ServerPersistenceAuthPortfolioTests(unittest.TestCase):
         }
         with mock.patch.object(serve_dashboard, "load_data_freshness", return_value=freshness), \
              mock.patch.object(serve_dashboard, "latest_intraday_nowcast_status", return_value={"fresh": True}), \
-             mock.patch.object(serve_dashboard, "latest_intraday_news_overlay_status", return_value={"fresh": True}):
+             mock.patch.object(serve_dashboard, "latest_intraday_news_overlay_status", return_value={"fresh": True}), \
+             mock.patch.object(serve_dashboard, "refresh_dashboard_snapshots") as snapshot_refresh:
             result = serve_dashboard.run_scheduled_refresh_cycle(thread_factory=ImmediateThread)
 
         self.assertTrue(result["ok"])
@@ -256,6 +257,8 @@ class ServerPersistenceAuthPortfolioTests(unittest.TestCase):
         self.assertIn((serve_dashboard.REFRESH_JOB_TYPE_MARKET_DATA, "SKIPPED_FRESH"), statuses)
         self.assertIn((serve_dashboard.REFRESH_JOB_TYPE_INTRADAY_NOWCAST, "SKIPPED_FRESH"), statuses)
         self.assertIn((serve_dashboard.REFRESH_JOB_TYPE_NEWS_OVERLAY, "SKIPPED_FRESH"), statuses)
+        self.assertGreaterEqual(snapshot_refresh.call_count, 3)
+        snapshot_refresh.assert_any_call(("scenario_dashboard", "service_status"))
 
     def test_status_reports_database_scheduler_and_selected_portfolio_state(self):
         user, _ = self.register_user("status@example.com")

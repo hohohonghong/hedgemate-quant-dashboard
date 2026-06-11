@@ -517,7 +517,7 @@ export const MarketStateDashboard = () => {
       setDashboard(data);
       setSelectedRun(data.runId || runId || '');
       if (data?.snapshotUnavailable || String(data?.status || '').toUpperCase() === 'REFRESHING') {
-        setRefreshStatus('공통 시장데이터 갱신이 백그라운드에서 진행 중입니다. 현재 저장된 snapshot을 먼저 표시합니다.');
+        setRefreshStatus('시장국면 snapshot을 준비 중입니다. 사용 가능한 최신 시장국면 데이터를 먼저 표시합니다.');
       } else {
         setRefreshStatus('');
       }

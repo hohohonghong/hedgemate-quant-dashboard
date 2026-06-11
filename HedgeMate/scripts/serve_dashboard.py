@@ -2848,6 +2848,27 @@ def write_scenario_dashboard_snapshot():
     return write_dashboard_snapshot("scenario_dashboard", payload)
 
 
+def load_scenario_dashboard_snapshot_or_live():
+    dashboard = load_dashboard_snapshot_payload("scenario_dashboard")
+    if dashboard is not None:
+        return dashboard
+    dashboard = load_scenario_dashboard_data(include_intraday_news=True)
+    dashboard["snapshotUnavailable"] = False
+    dashboard["status"] = dashboard.get("status") or "READY"
+    dashboard["snapshot"] = {
+        "kind": "scenario_dashboard",
+        "current": False,
+        "source": "live_fallback",
+    }
+    try:
+        write_dashboard_snapshot("scenario_dashboard", dashboard)
+        dashboard["snapshot"]["current"] = True
+        dashboard["snapshot"]["source"] = "live_fallback_written"
+    except Exception as exc:
+        dashboard["snapshot"]["writeError"] = tail_diagnostic_text(str(exc), max_chars=300, max_lines=2)
+    return dashboard
+
+
 def write_product_dashboard_snapshot():
     payload = load_product_dashboard_data(compact=False)
     return write_dashboard_snapshot("product_dashboard", payload)
@@ -2875,6 +2896,14 @@ def refresh_dashboard_snapshots(kinds):
                 flush=True,
             )
     return written
+
+
+def refresh_dashboard_snapshots_after_fresh_skip(mode):
+    if mode in {"market_data_only", "intraday_nowcast"}:
+        return refresh_dashboard_snapshots(("scenario_dashboard", "service_status"))
+    if mode in {"portfolio_reanalysis", "full_rebuild"}:
+        return refresh_dashboard_snapshots(("scenario_dashboard", "product_dashboard", "service_status"))
+    return []
 
 
 def resolve_manifest_artifact(manifest, key, default_dir):
@@ -4858,6 +4887,7 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
         update_refresh_job_record(job_id, "SKIPPED_FRESH", finished=True)
+        refresh_dashboard_snapshots_after_fresh_skip(mode)
         record_data_snapshot_for_refresh(job_type, "SKIPPED_FRESH", payload=payload, result=_snapshot_run_job(job_id))
         return _snapshot_run_job(job_id)
 
@@ -5040,6 +5070,7 @@ def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread
             completedAt=datetime.now().isoformat(timespec="seconds"),
         )
         update_refresh_job_record(job_id, "SKIPPED_FRESH", finished=True)
+        refresh_dashboard_snapshots(("scenario_dashboard", "service_status"))
         record_data_snapshot_for_refresh(job_type, "SKIPPED_FRESH", payload=payload, result={"intradayNewsOverlay": status})
         return _snapshot_run_job(job_id)
 
@@ -8597,10 +8628,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             requested = params.get("run_id", [None])[0]
             try:
                 if not requested:
-                    dashboard = load_dashboard_snapshot_payload("scenario_dashboard")
-                    if dashboard is None:
-                        dashboard = snapshot_unavailable_payload("scenario_dashboard")
-                    return self._json_response(dashboard)
+                    return self._json_response(load_scenario_dashboard_snapshot_or_live())
                 return self._json_response(load_scenario_dashboard_data(requested))
             except FileNotFoundError as exc:
                 return self._json_response({"error": str(exc)}, status=HTTPStatus.NOT_FOUND)

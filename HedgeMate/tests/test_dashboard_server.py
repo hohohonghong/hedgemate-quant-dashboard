@@ -316,6 +316,38 @@ class DashboardServerTests(unittest.TestCase):
         self.assertTrue(product_payload["payloadCompact"]["enabled"])
         self.assertEqual(scenario_payload["snapshot"]["kind"], "scenario_dashboard")
 
+    def test_scenario_dashboard_falls_back_to_live_when_snapshot_missing(self):
+        server = serve_dashboard.ThreadingHTTPServer(("127.0.0.1", 0), serve_dashboard.DashboardHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_address[1]}"
+        live_payload = {
+            "runId": "live-scenario",
+            "primaryMarketState": {"label": "Live"},
+            "marketStateFreshness": {"primarySource": "official_daily"},
+        }
+
+        try:
+            with mock.patch.object(serve_dashboard, "load_dashboard_snapshot_payload", return_value=None), \
+                 mock.patch.object(serve_dashboard, "load_scenario_dashboard_data", return_value=dict(live_payload)) as scenario_loader, \
+                 mock.patch.object(serve_dashboard, "write_dashboard_snapshot") as snapshot_writer:
+                with urllib.request.urlopen(f"{base_url}/api/scenario-dashboard", timeout=5) as response:
+                    self.assertEqual(response.status, 200)
+                    payload = json.loads(response.read().decode("utf-8"))
+
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+            server.server_close()
+
+        scenario_loader.assert_called_once()
+        snapshot_writer.assert_called_once()
+        self.assertFalse(payload["snapshotUnavailable"])
+        self.assertEqual(payload["status"], "READY")
+        self.assertEqual(payload["runId"], "live-scenario")
+        self.assertEqual(payload["snapshot"]["kind"], "scenario_dashboard")
+        self.assertEqual(payload["snapshot"]["source"], "live_fallback_written")
+
     def test_analysis_cache_hit_does_not_overwrite_active_manifest(self):
         previous_root = serve_dashboard.ROOT
         previous_cache_dir = serve_dashboard.ANALYSIS_CACHE_DIR
@@ -1137,7 +1169,8 @@ class DashboardServerTests(unittest.TestCase):
                 "marketDataFailedTickers": [],
                 "activeBundleOlderThanMarketCache": True,
             },
-        ), mock.patch.object(serve_dashboard, "latest_intraday_nowcast_status", return_value={}):
+        ), mock.patch.object(serve_dashboard, "latest_intraday_nowcast_status", return_value={}), \
+             mock.patch.object(serve_dashboard, "refresh_dashboard_snapshots") as snapshot_refresh:
             job = serve_dashboard.launch_refresh_market_data_job(
                 {"mode": "market_data_only"},
                 runner=fake_runner,
@@ -1147,6 +1180,7 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(job["status"], "skipped_latest")
         self.assertNotIn("started", calls)
         self.assertNotIn("runner", calls)
+        snapshot_refresh.assert_called_once_with(("scenario_dashboard", "service_status"))
 
     def test_market_data_only_skip_gate_requires_scenario_and_clean_tickers(self):
         cases = [
@@ -1418,7 +1452,7 @@ class DashboardServerTests(unittest.TestCase):
                 serve_dashboard,
                 "load_data_freshness",
                 return_value={"status": "current", "skipHeavyRefresh": True, "marketDataFresh": True},
-            ):
+            ), mock.patch.object(serve_dashboard, "refresh_dashboard_snapshots") as snapshot_refresh:
                 job = serve_dashboard.launch_refresh_market_data_job(
                     {
                         "portfolioRows": [
@@ -1437,6 +1471,7 @@ class DashboardServerTests(unittest.TestCase):
         self.assertTrue(job["result"]["portfolioContext"]["requested"])
         self.assertFalse(job["result"]["portfolioContext"]["applied"])
         self.assertTrue(job["result"]["reason"])
+        snapshot_refresh.assert_called_once_with(("scenario_dashboard", "service_status"))
 
     def test_full_rebuild_refresh_skips_when_outputs_are_current(self):
         class Result:
@@ -1463,7 +1498,7 @@ class DashboardServerTests(unittest.TestCase):
             serve_dashboard,
             "load_data_freshness",
             return_value={"status": "current", "skipHeavyRefresh": True, "marketDataFresh": True},
-        ):
+        ), mock.patch.object(serve_dashboard, "refresh_dashboard_snapshots") as snapshot_refresh:
             job = serve_dashboard.launch_refresh_market_data_job(
                 {"mode": "full_rebuild"},
                 runner=fake_runner,
@@ -1475,6 +1510,7 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(job["mode"], "full_rebuild")
         self.assertNotIn("cmd", calls)
         self.assertIn("already current", job["result"]["reason"])
+        snapshot_refresh.assert_called_once_with(("scenario_dashboard", "product_dashboard", "service_status"))
 
     def test_latest_market_cache_status_prefers_requested_raw_snapshot_over_stale_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1707,7 +1743,8 @@ class DashboardServerTests(unittest.TestCase):
             serve_dashboard,
             "latest_intraday_nowcast_status",
             return_value={"fresh": True, "latestTimestampKst": "2026-05-28T12:00:00+09:00", "requiredAnchorKst": "2026-05-28T12:00:00+09:00"},
-        ), mock.patch.object(serve_dashboard, "load_data_freshness") as freshness:
+        ), mock.patch.object(serve_dashboard, "load_data_freshness") as freshness, \
+             mock.patch.object(serve_dashboard, "refresh_dashboard_snapshots") as snapshot_refresh:
             job = serve_dashboard.launch_refresh_market_data_job(
                 {"mode": "intraday_nowcast"},
                 runner=fake_runner,
@@ -1718,6 +1755,7 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(job["status"], "skipped_latest")
         self.assertEqual(job["mode"], "intraday_nowcast")
         self.assertNotIn("cmd", calls)
+        snapshot_refresh.assert_called_once_with(("scenario_dashboard", "service_status"))
 
     def test_latest_intraday_nowcast_status_resolves_packaged_vector_when_metadata_has_dev_path(self):
         old_values = {
@@ -1864,7 +1902,7 @@ class DashboardServerTests(unittest.TestCase):
                 "marketDataRefreshAttempted": True,
                 "marketDataRefreshAttemptTargetLatestMarketDate": "2026-05-19",
             },
-        ):
+        ), mock.patch.object(serve_dashboard, "refresh_dashboard_snapshots") as snapshot_refresh:
             job = serve_dashboard.launch_refresh_market_data_job(
                 {"mode": "market_data_only"},
                 runner=fake_runner,
@@ -1874,6 +1912,7 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(job["status"], "skipped_latest")
         self.assertNotIn("cmd", calls)
         self.assertIn("already attempted today", job["result"]["reason"])
+        snapshot_refresh.assert_called_once_with(("scenario_dashboard", "service_status"))
 
     def test_launch_refresh_can_force_latest_refresh_with_portfolio_context(self):
         class Result:
@@ -4577,6 +4616,33 @@ class DashboardServerTests(unittest.TestCase):
             self.assertEqual(job["status"], "completed")
             self.assertEqual(job["jobType"], serve_dashboard.INTRADAY_NEWS_JOB_TYPE)
             self.assertEqual(serve_dashboard.RUN_JOBS["market-running"]["status"], "running")
+
+    def test_intraday_news_overlay_skip_refreshes_scenario_snapshot(self):
+        class ImmediateThread:
+            def __init__(self, target, args=(), kwargs=None, daemon=None):
+                self.target = target
+                self.args = args
+                self.kwargs = kwargs or {}
+
+            def start(self):
+                self.target(*self.args, **self.kwargs)
+
+        def fake_runner(*_args, **_kwargs):
+            raise AssertionError("intraday news runner should not run when overlay is fresh")
+
+        with mock.patch.object(
+            serve_dashboard,
+            "latest_intraday_news_overlay_status",
+            return_value={"fresh": True, "latestTimestampKst": "2026-06-12T12:00:00+09:00"},
+        ), mock.patch.object(serve_dashboard, "refresh_dashboard_snapshots") as snapshot_refresh:
+            job = serve_dashboard.launch_intraday_news_overlay_job(
+                {"dataVersion": "20260612"},
+                runner=fake_runner,
+                thread_factory=ImmediateThread,
+            )
+
+        self.assertEqual(job["status"], "skipped_latest")
+        snapshot_refresh.assert_called_once_with(("scenario_dashboard", "service_status"))
 
     def test_intraday_news_top5_hides_fallback_items_for_dashboard(self):
         with tempfile.TemporaryDirectory() as tmp:
