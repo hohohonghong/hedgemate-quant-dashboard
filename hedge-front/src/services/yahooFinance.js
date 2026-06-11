@@ -39,7 +39,6 @@ export const searchTickers = async (query, options = {}) => {
     CACHE.search.set(cacheKey, { data: results, timestamp: Date.now() });
     return results;
   } catch (error) {
-    console.error('Error searching tickers:', error);
     if (options.throwOnError) throw error;
     return [];
   }
@@ -85,8 +84,9 @@ export const getTickerQuote = async (ticker) => {
 
     CACHE.quotes.set(cacheKey, { data: result, timestamp: Date.now() });
     return result;
-  } catch (error) {
-    console.error('Error fetching ticker quote:', error);
+  } catch {
+    // The unauthenticated Yahoo quote endpoint can return 401 even when the
+    // chart fallback or HedgeMate price lookup has usable cached prices.
     return null;
   }
 };
