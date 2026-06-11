@@ -1,6 +1,6 @@
 (() => {
   const api = (path) => fetch(path, { credentials: 'include' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  const state = { user: null, market: null, startedAt: Date.now() };
+  const state = { user: null, market: null, assets: null, startedAt: Date.now() };
   const fmtDate = (value) => {
     if (!value) return '';
     const text = String(value);
@@ -30,6 +30,74 @@
         const el = nearestElement(node);
         if (el) el.style.display = 'none';
       }
+    });
+  };
+  const nativeSetValue = (input, value) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (setter) setter.call(input, value);
+    else input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const normalizedAssets = () => (state.assets || []).map((asset) => ({
+    ticker: asset.ticker || asset.symbol || '',
+    name: asset.label || asset.displayLabel || asset.name || asset.popularName || asset.ticker || asset.symbol || '',
+    group: asset.assetClass || asset.currency || asset.exchange || '',
+    search: [asset.ticker, asset.symbol, asset.label, asset.displayLabel, asset.name, asset.popularName, asset.assetClass, ...(asset.aliases || [])].filter(Boolean).join(' ').toLowerCase(),
+  })).filter((asset) => asset.ticker);
+  const ensureAssets = async () => {
+    if (state.assets) return state.assets;
+    const payload = await api('/api/assets');
+    state.assets = Array.isArray(payload) ? payload : (payload?.assets || payload?.items || []);
+    return state.assets;
+  };
+  const renderTickerOverlay = async (input) => {
+    if (!input || input.dataset.hmQaTickerPatched !== '1') return;
+    await ensureAssets();
+    const container = input.closest('.ticker-input-container') || input.parentElement;
+    if (!container) return;
+    container.style.position = container.style.position || 'relative';
+    let panel = container.querySelector('.hm-qa-asset-overlay');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.className = 'hm-qa-asset-overlay suggestions-dropdown';
+      panel.style.maxHeight = '340px';
+      panel.style.overflowY = 'auto';
+      panel.style.zIndex = '9999';
+      panel.style.minWidth = '360px';
+      container.appendChild(panel);
+    }
+    const q = String(input.value || '').trim().toLowerCase();
+    const qNoSpace = q.replace(/\s+/g, '');
+    const rows = normalizedAssets().filter((asset) => !q || asset.search.includes(q) || asset.ticker.toLowerCase().includes(qNoSpace)).slice(0, q ? 80 : 160);
+    panel.innerHTML = '';
+    const header = document.createElement('div');
+    header.className = 'suggestion-state';
+    header.textContent = `${rows.length}개 표시 / HedgeMate 전체 ${normalizedAssets().length}개 자산`;
+    panel.appendChild(header);
+    rows.forEach((asset) => {
+      const row = document.createElement('div');
+      row.className = 'suggestion-item';
+      row.innerHTML = `<div class="suggestion-info"><span class="suggestion-ticker"></span><span class="suggestion-name"></span></div><span class="suggestion-exchange">HedgeMate</span>`;
+      row.querySelector('.suggestion-ticker').textContent = asset.ticker;
+      row.querySelector('.suggestion-name').textContent = asset.name;
+      row.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        nativeSetValue(input, asset.ticker);
+        const nameInput = input.closest('tr')?.querySelector('td:nth-child(2) input');
+        if (nameInput) nativeSetValue(nameInput, asset.name);
+        panel.remove();
+      });
+      panel.appendChild(row);
+    });
+  };
+  const patchTickerInputs = () => {
+    document.querySelectorAll('.ticker-input-container input').forEach((input) => {
+      if (input.dataset.hmQaTickerPatched === '1') return;
+      input.dataset.hmQaTickerPatched = '1';
+      input.addEventListener('focus', () => renderTickerOverlay(input));
+      input.addEventListener('input', () => renderTickerOverlay(input));
+      input.addEventListener('blur', () => setTimeout(() => input.closest('.ticker-input-container')?.querySelector('.hm-qa-asset-overlay')?.remove(), 220));
     });
   };
   const replaceText = () => {
@@ -73,9 +141,10 @@
     });
     const unique = [...new Set(loadingNodes)];
     if (unique.length > 1) unique.slice(0, -1).forEach((el) => { el.style.display = 'none'; });
+    patchTickerInputs();
   };
   const refreshState = async () => {
-    const [user, market] = await Promise.all([api('/api/auth/me'), api('/api/scenario-dashboard')]);
+    const [user, market] = await Promise.all([api('/api/auth/me'), api('/api/scenario-dashboard'), ensureAssets()]);
     if (user) state.user = user.user || user;
     if (market) state.market = market;
     replaceText();
