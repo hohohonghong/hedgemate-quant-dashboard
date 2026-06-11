@@ -119,7 +119,7 @@
     textNodes(root).forEach((node) => {
       if ((node.nodeValue || '').includes(text)) {
         const el = nearestElement(node);
-        if (el) el.style.display = 'none';
+        if (el && el.style.display !== 'none') el.style.display = 'none';
       }
     });
   };
@@ -223,7 +223,7 @@
   const removeBadMarketFallbacks = () => {
     document.querySelectorAll('.hm-qa-market-nowcast, .hm-qa-market-inline').forEach((el) => el.remove());
     document.querySelectorAll('.market-basis-chip').forEach((el) => {
-      el.style.display = 'none';
+      if (el.style.display !== 'none') el.style.display = 'none';
     });
   };
 
@@ -231,22 +231,23 @@
     const primary = state.market?.primaryMarketState || {};
     const nowcastBasis = primary.asOfKst ? fmtKst(primary.asOfKst) : fmtDate(primary.dataAsOfDate);
     if (!nowcastBasis) return;
+    const kickerText = `현재 시장국면 진단 · 장중 nowcast 기준 ${nowcastBasis}`;
     document.querySelectorAll('.summary-kicker').forEach((el) => {
-      if (el.textContent.includes('현재 시장국면 진단')) {
-        el.textContent = `현재 시장국면 진단 · 장중 nowcast 기준 ${nowcastBasis}`;
+      if (el.textContent.includes('현재 시장국면 진단') && el.textContent !== kickerText) {
+        el.textContent = kickerText;
       }
     });
     document.querySelectorAll('.summary-title-row .state-chip.neutral').forEach((el) => {
-      el.textContent = '장중 nowcast';
+      if (el.textContent !== '장중 nowcast') el.textContent = '장중 nowcast';
     });
     document.querySelectorAll('.summary-basis-row span').forEach((el) => {
       const text = el.textContent.trim();
       if (text.includes('현재 데이터 기준:') || /^\d{4}\.\d{2}\.\d{2}$/.test(text) || text.includes('2026.06.09') || text.includes('2026-06-09')) {
-        el.style.display = 'none';
+        if (el.style.display !== 'none') el.style.display = 'none';
       }
     });
     document.querySelectorAll('.summary-chip-row strong').forEach((el) => {
-      if (el.textContent.includes('정식 일간 국면 TOP 3')) {
+      if (el.textContent.includes('정식 일간 국면 TOP 3') && el.textContent !== '정식 일간 국면 TOP 3:') {
         el.textContent = '정식 일간 국면 TOP 3:';
       }
     });
