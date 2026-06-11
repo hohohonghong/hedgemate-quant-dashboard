@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import mimetypes
 import os
 import urllib.error
@@ -16,6 +17,12 @@ DEFAULT_CORS_ORIGINS = {
     "https://hedgemate.eyefeet.com",
     "https://hedgemate-front.eyefeet.com",
 }
+RUNTIME_API_ENV_KEYS = (
+    "HEDGEMATE_FRONTEND_API_BASE",
+    "HEDGEMATE_EXTERNAL_API_BASE",
+    "HEDGEMATE_PUBLIC_BACKEND_URL",
+    "VITE_HEDGEMATE_API_URL",
+)
 
 
 def configured_cors_origins():
@@ -24,14 +31,25 @@ def configured_cors_origins():
     return DEFAULT_CORS_ORIGINS | values
 
 
+def configured_runtime_api_base():
+    for key in RUNTIME_API_ENV_KEYS:
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value.rstrip("/")
+    return ""
+
+
 class FrontendHandler(BaseHTTPRequestHandler):
     api_base = "http://127.0.0.1:8766"
+    frontend_api_base = configured_runtime_api_base()
     cors_origins = configured_cors_origins()
 
     def log_message(self, format, *args):
         return
 
     def do_GET(self):
+        if urllib.parse.urlparse(self.path).path == "/hedgemate-runtime-config.js":
+            return self.serve_runtime_config()
         if self.path.startswith("/api/"):
             return self.proxy_api()
         return self.serve_static()
@@ -146,14 +164,31 @@ class FrontendHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def serve_runtime_config(self):
+        payload = (
+            "window.__HEDGEMATE_API_URL__ = "
+            + json.dumps(self.frontend_api_base)
+            + ";\n"
+        ).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/javascript; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Serve built HedgeMate frontend with /api proxy")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5173)
     parser.add_argument("--api-base", default="http://127.0.0.1:8766")
+    parser.add_argument("--frontend-api-base", default=configured_runtime_api_base())
     args = parser.parse_args()
     FrontendHandler.api_base = args.api_base
+    FrontendHandler.frontend_api_base = args.frontend_api_base.rstrip("/") if args.frontend_api_base else ""
     server = ThreadingHTTPServer((args.host, args.port), FrontendHandler)
     print(f"HedgeMate frontend running at http://{args.host}:{args.port}")
     try:
