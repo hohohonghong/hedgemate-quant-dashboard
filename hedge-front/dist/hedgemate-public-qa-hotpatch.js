@@ -8,6 +8,19 @@
     const url = typeof input === 'string' ? input : input?.url || '';
     return /\/api\/scenario-dashboard(?:\?|$)/.test(url);
   };
+  const isMarketStateRoute = () => location.pathname.includes('/market-state');
+  const isMarketStateRefreshUrl = (input) => {
+    const url = typeof input === 'string' ? input : input?.url || '';
+    return /\/api\/(?:refresh-market-data|refresh-intraday-news)(?:\?|$)/.test(url);
+  };
+  const skippedLatestResponse = () => new Response(JSON.stringify({
+    status: 'skipped_latest',
+    reason: 'already current for market-state public view',
+    skipped: true,
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 
   const normalizeMarketDashboard = (payload) => {
     if (!payload || typeof payload !== 'object') return payload;
@@ -51,6 +64,7 @@
   };
 
   window.fetch = async (...args) => {
+    if (isMarketStateRoute() && isMarketStateRefreshUrl(args[0])) return skippedLatestResponse();
     const response = await nativeFetch(...args);
     if (!isScenarioDashboardUrl(args[0])) return response;
     try {
