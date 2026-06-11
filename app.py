@@ -78,10 +78,11 @@ def startup_refresh_disabled():
 
 def start_backend():
     backend_env = os.environ.copy()
-    backend_env.setdefault("HEDGEMATE_SERVER_SAFE_MODE", "1")
+    backend_env.pop("HEDGEMATE_SERVER_SAFE_MODE", None)
+    backend_env.setdefault("HEDGEMATE_SCHEDULER_INITIAL_DELAY_SECONDS", "0")
     command = [
         sys.executable,
-        "scripts/serve_dashboard_beecast.py",
+        "scripts/serve_dashboard.py",
         "--host",
         "127.0.0.1",
         "--port",
