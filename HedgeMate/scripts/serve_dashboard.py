@@ -4713,6 +4713,19 @@ def latest_running_market_refresh_job(mode=None):
     return snapshots[-1] if snapshots else None
 
 
+def market_data_ready_for_status(freshness):
+    return bool(
+        freshness.get("marketDataFresh")
+        and not (freshness.get("marketDataStaleTickers") or [])
+        and not (freshness.get("marketDataFailedTickers") or [])
+    )
+
+
+def intraday_nowcast_ready_for_status(freshness):
+    intraday = freshness.get("intradayNowcast") or {}
+    return bool(freshness.get("intradayNowcastFresh") or intraday.get("fresh"))
+
+
 def blocked_by_running_refresh_job_response(requested_mode, running_job):
     blocking_mode = str((running_job or {}).get("mode") or "").strip() or None
     return {
@@ -8077,8 +8090,10 @@ def load_service_status(selected_portfolio_id=None, selected_portfolio_hash=None
             active_product_status = "REFRESHING" if has_running_analysis_job() else "STALE"
             active_raw_product_status = active_product_status
             recommendation_state = "PRODUCT_DASHBOARD_SNAPSHOT_UNAVAILABLE"
-    market_refreshing = bool(latest_running_market_refresh_job(mode="market_data_only"))
-    intraday_refreshing = bool(latest_running_market_refresh_job(mode="intraday_nowcast"))
+    market_ready = market_data_ready_for_status(freshness)
+    intraday_ready = intraday_nowcast_ready_for_status(freshness)
+    market_refreshing = bool(latest_running_market_refresh_job(mode="market_data_only")) and not market_ready
+    intraday_refreshing = bool(latest_running_market_refresh_job(mode="intraday_nowcast")) and not intraday_ready
     news_refreshing = bool(latest_running_intraday_news_job())
     news_status = latest_intraday_news_overlay_status()
     selected_portfolio_status = "NEEDS_ANALYSIS"
@@ -8121,8 +8136,8 @@ def load_service_status(selected_portfolio_id=None, selected_portfolio_hash=None
             "productStatus": effective_product_status,
             "rawProductStatus": effective_raw_product_status,
             "needsRefresh": freshness.get("needsRefresh"),
-            "market_data": "REFRESHING" if market_refreshing else ("FRESH" if freshness.get("marketDataFresh") else "STALE"),
-            "intraday_nowcast": "REFRESHING" if intraday_refreshing else ("FRESH" if freshness.get("intradayNowcastFresh") else "STALE"),
+            "market_data": "REFRESHING" if market_refreshing else ("FRESH" if market_ready else "STALE"),
+            "intraday_nowcast": "REFRESHING" if intraday_refreshing else ("FRESH" if intraday_ready else "STALE"),
             "news_overlay": "REFRESHING" if news_refreshing else ("FRESH" if news_status.get("fresh") else ("DISABLED" if news_status.get("disabled") else "STALE")),
             "selected_portfolio": selected_portfolio_status,
             "product_mode": effective_product_status,

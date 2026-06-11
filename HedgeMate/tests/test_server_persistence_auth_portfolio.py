@@ -285,6 +285,40 @@ class ServerPersistenceAuthPortfolioTests(unittest.TestCase):
         self.assertEqual(status["news_overlay"], "FRESH")
         self.assertEqual(status["selected_portfolio"], "NEEDS_ANALYSIS")
 
+    def test_status_reports_fresh_when_market_refresh_marker_remains_after_fresh_cache(self):
+        serve_dashboard.RUN_JOBS["stale-market-refresh"] = {
+            "jobId": "stale-market-refresh",
+            "jobType": serve_dashboard.MARKET_REFRESH_JOB_TYPE,
+            "mode": "market_data_only",
+            "status": "running",
+            "stage": "market_data_only",
+            "startedAt": serve_dashboard._now_iso(),
+            "lastHeartbeatAt": serve_dashboard._now_iso(),
+        }
+        freshness = {
+            "freshnessStatus": "FRESH",
+            "marketDataFresh": True,
+            "intradayNowcastFresh": True,
+            "needsRefresh": False,
+            "marketDataStaleTickers": [],
+            "marketDataFailedTickers": [],
+        }
+
+        with mock.patch.object(serve_dashboard, "load_data_freshness", return_value=freshness), \
+             mock.patch.object(serve_dashboard, "active_bundle_integrity", return_value={"missingArtifacts": []}), \
+             mock.patch.object(serve_dashboard, "latest_intraday_news_overlay_status", return_value={"fresh": True}), \
+             mock.patch.object(serve_dashboard, "read_product_manifest", return_value={"active_bundle": {}, "freshness_status": "FRESH"}), \
+             mock.patch.object(
+                 serve_dashboard,
+                 "load_dashboard_snapshot_payload",
+                 return_value={"productStatus": "REVIEW_ONLY", "recommendationDecision": {}},
+             ):
+            status = serve_dashboard.load_service_status()
+
+        self.assertEqual(status["market_data"], "FRESH")
+        self.assertEqual(status["intraday_nowcast"], "FRESH")
+        self.assertEqual(status["productStatus"], "REVIEW_ONLY")
+
     def test_status_uses_selected_portfolio_dashboard_status(self):
         user, _ = self.register_user("review-status@example.com")
         portfolio = serve_dashboard.save_portfolio_for_user(user["id"], portfolio_payload("Review Portfolio"))
