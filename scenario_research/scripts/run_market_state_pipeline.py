@@ -65,9 +65,6 @@ OUTPUT_REPORT_DIR = SCENARIO_ROOT / "outputs" / "reports"
 OUTPUT_SCENARIO_VECTOR_DIR = SCENARIO_ROOT / "outputs" / "scenario_vectors"
 OUTPUT_MANIFEST_JSON = SCENARIO_ROOT / "outputs" / "latest_manifest.json"
 MIN_TICKER_COVERAGE_RATIO = 0.75
-ANCHOR_FORWARD_FILL_SPECS = {
-    FX_TICKER: {"max_gap_days": 3, "strategy": "previous_close_forward_fill"},
-}
 EXTERNAL_INDICATOR_INPUTS = [
     SCENARIO_ROOT / "inputs" / "market_state_external_indicators.csv",
     HEDGEMATE_ROOT / "inputs" / "market_state_external_indicators.csv",
@@ -87,6 +84,11 @@ REQUIRED_MARKET_STATE_TICKERS = {
     "FXI",
     "SOXX",
     "^VIX",
+}
+DEFAULT_ANCHOR_FORWARD_FILL_SPEC = {"max_gap_days": 3, "strategy": "previous_close_forward_fill"}
+ANCHOR_FORWARD_FILL_SPECS = {
+    ticker: dict(DEFAULT_ANCHOR_FORWARD_FILL_SPEC)
+    for ticker in REQUIRED_MARKET_STATE_TICKERS
 }
 
 
@@ -400,11 +402,11 @@ def _fill_anchor_gap_for_series(ticker, series, anchor_date, max_gap_days, strat
 
     earlier = [(date_str, close, source) for date_str, close, source in series if date_str < anchor_date]
     later = [(date_str, close, source) for date_str, close, source in series if date_str > anchor_date]
-    if not earlier or not later:
+    if not earlier:
         return list(series), []
 
     previous_date, previous_close, previous_source = max(earlier, key=lambda item: item[0])
-    next_date, _, _ = min(later, key=lambda item: item[0])
+    next_date = min((date_str for date_str, _, _ in later), default=None)
     gap_days = (_iso_to_date(anchor_date) - _iso_to_date(previous_date)).days
     if gap_days <= 0 or gap_days > max_gap_days:
         return list(series), []
@@ -851,11 +853,18 @@ def build_market_state_raw(period1, period2, data_version, ingested_at, reuse_sh
 
         unaligned_series_map[ticker] = [(date_str, close, source) for date_str, close in series]
 
+    target_anchor_forward_fills = []
+    if target_latest_date:
+        unaligned_series_map, target_anchor_forward_fills = apply_anchor_forward_fills(
+            unaligned_series_map,
+            target_latest_date,
+        )
     anchor_date, anchor_metadata = choose_aligned_market_anchor(
         {ticker: [(date_str, close) for date_str, close, _ in series] for ticker, series in unaligned_series_map.items()},
         required_tickers=REQUIRED_MARKET_STATE_TICKERS,
     )
     unaligned_series_map, anchor_forward_fills = apply_anchor_forward_fills(unaligned_series_map, anchor_date)
+    anchor_forward_fills = target_anchor_forward_fills + anchor_forward_fills
     anchor_date, anchor_metadata = choose_aligned_market_anchor(
         {ticker: [(date_str, close) for date_str, close, _ in series] for ticker, series in unaligned_series_map.items()},
         required_tickers=REQUIRED_MARKET_STATE_TICKERS,

@@ -44,10 +44,29 @@ class MarketStatePipelineTest(unittest.TestCase):
         self.assertEqual(fill_rows[0]["filled_date"], "2026-05-06")
         self.assertEqual(fill_rows[0]["source_date"], "2026-05-05")
 
-    def test_does_not_fill_when_future_observation_is_missing(self):
+    def test_forward_fills_required_anchor_gap_without_future_observation(self):
         series_map = {
             "KRW=X": [
                 ("2026-05-05", 1473.959961, "hedgemate_fx_raw"),
+            ]
+        }
+
+        filled_map, fill_rows = apply_anchor_forward_fills(series_map, "2026-05-06")
+
+        self.assertEqual(
+            filled_map["KRW=X"],
+            [
+                ("2026-05-05", 1473.959961, "hedgemate_fx_raw"),
+                ("2026-05-06", 1473.959961, "anchor_forward_fill"),
+            ],
+        )
+        self.assertEqual(len(fill_rows), 1)
+        self.assertIsNone(fill_rows[0]["next_observation_date"])
+
+    def test_does_not_forward_fill_required_anchor_gap_beyond_limit(self):
+        series_map = {
+            "KRW=X": [
+                ("2026-05-01", 1473.959961, "hedgemate_fx_raw"),
             ]
         }
 
@@ -84,6 +103,32 @@ class MarketStatePipelineTest(unittest.TestCase):
         self.assertEqual(anchor_date, "2026-06-09")
         self.assertTrue(metadata["required_anchor_satisfied"])
         self.assertEqual(metadata["required_tickers_missing_on_anchor_date"], [])
+
+    def test_target_anchor_forward_fill_keeps_latest_required_market_state_date(self):
+        series_map = {
+            "UUP": [("2026-06-09", 1.0, "hedgemate_market_raw")],
+            "SOXX": [("2026-06-09", 1.0, "hedgemate_market_raw")],
+            "^VIX": [("2026-06-09", 1.0, "hedgemate_market_raw")],
+            "SPY": [
+                ("2026-06-09", 1.0, "hedgemate_market_raw"),
+                ("2026-06-10", 1.0, "hedgemate_market_raw"),
+            ],
+        }
+
+        filled_map, fill_rows = apply_anchor_forward_fills(series_map, "2026-06-10")
+        anchor_date, metadata = choose_aligned_market_anchor(
+            {
+                ticker: [(date_str, close) for date_str, close, _ in series]
+                for ticker, series in filled_map.items()
+            },
+            min_coverage_ratio=0.5,
+            required_tickers={"UUP", "SOXX", "^VIX"},
+        )
+
+        self.assertEqual(anchor_date, "2026-06-10")
+        self.assertTrue(metadata["required_anchor_satisfied"])
+        self.assertEqual(metadata["required_tickers_missing_on_anchor_date"], [])
+        self.assertEqual({row["ticker"] for row in fill_rows}, {"UUP", "SOXX", "^VIX"})
 
     def test_scenario_registry_contains_v2_scenarios(self):
         rows = build_scenario_registry_rows()
