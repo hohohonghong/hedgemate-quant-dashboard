@@ -30,13 +30,6 @@
     }, {});
     return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
   };
-  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  }[ch]));
   const textNodes = (root = document.body) => {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const nodes = [];
@@ -138,78 +131,9 @@
     });
   };
 
-  const renderMarketStateFallback = () => {
+  const removeMarketStateFallback = () => {
     document.querySelectorAll('.hm-qa-market-nowcast').forEach((el) => el.remove());
-    if (!location.pathname.includes('/market-state')) return;
-    const market = state.market;
-    const primary = market?.primaryMarketState;
-    const main = document.querySelector('main');
-    if (!market || !primary || !main) return;
-
-    const existingSummary = main.querySelector('.market-simple-summary');
-    if (existingSummary && !existingSummary.classList.contains('hm-qa-market-inline')) return;
-    const loading = main.querySelector('.market-loading');
-    const target = existingSummary?.classList.contains('hm-qa-market-inline') ? existingSummary : loading;
-    if (!target) return;
-
-    const basis = primary.asOfKst ? fmtKst(primary.asOfKst) : fmtDate(primary.dataAsOfDate || market.asOfDate);
-    const score = Number.isFinite(Number(primary.score)) ? Number(primary.score).toFixed(1) : '-';
-    const confidence = Number.isFinite(Number(primary.confidence)) ? Number(primary.confidence).toFixed(1) : '-';
-    const stateLabel = primary.state || primary.code || '-';
-    const title = primary.nameKo || primary.name || primary.code || '현재 시장국면';
-    const interpretation = primary.interpretationKo || market.dataFreshnessNote || '장중 nowcast 기준으로 현재 시장 상태를 요약합니다.';
-    const news = Array.isArray(market.intradayNewsTop5) ? market.intradayNewsTop5 : [];
-    const signature = JSON.stringify([basis, score, confidence, stateLabel, title, news.length]);
-    if (target.dataset.signature === signature) return;
-    target.dataset.signature = signature;
-
-    const newsHtml = news.length
-      ? `<ul class="news-overlay-list">${news.map((item, index) => {
-        const label = escapeHtml(item.title || item.headline || item.source || '뉴스');
-        const href = item.url || item.link;
-        const titleHtml = href && /^https?:\/\//.test(href)
-          ? `<a class="news-source-chip" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer"><span>${label}</span></a>`
-          : `<span class="news-source-chip muted"><span>${label}</span></span>`;
-        return `<article class="news-overlay-item"><div class="news-overlay-rank">#${index + 1}</div><div class="news-overlay-body">${titleHtml}</div></article>`;
-      }).join('')}</ul>`
-      : '<div class="market-empty compact">검증된 실시간 뉴스가 없어 Top5 뉴스를 표시하지 않습니다.</div>';
-
-    const section = document.createElement('section');
-    section.className = 'market-simple-summary mt-6 hm-qa-market-inline';
-    section.dataset.signature = signature;
-    section.innerHTML = `
-      <div class="market-simple-copy">
-        <span class="summary-kicker">현재 시장국면 진단 · 장중 nowcast 기준 ${escapeHtml(basis)}</span>
-        <div class="summary-title-row">
-          <h2>${escapeHtml(title)}</h2>
-          <span class="state-chip warning">${escapeHtml(stateLabel)}</span>
-          <span class="state-chip neutral">장중 nowcast</span>
-        </div>
-        <p>${escapeHtml(interpretation)}</p>
-        <div class="summary-basis-row">
-          <span>현재 기준: ${escapeHtml(basis)}</span>
-          <span>뉴스 기준: 검증된 실시간 뉴스 ${news.length}건</span>
-        </div>
-        <div class="summary-chip-row">
-          <strong>뉴스 Top5:</strong>
-        </div>
-        ${newsHtml}
-      </div>
-      <div class="market-simple-score">
-        <strong>${escapeHtml(score)}</strong>
-        <span>NOWCAST SCORE</span>
-        <p>신뢰도 ${escapeHtml(confidence)}</p>
-        <div class="score-meter"><div class="score-meter-fill" style="width:${escapeHtml(score)}%"></div></div>
-        <div class="summary-count-row">
-          <span class="state-chip warning">${escapeHtml(stateLabel)}</span>
-        </div>
-      </div>
-    `;
-    target.replaceWith(section);
-
-    main.querySelectorAll('.market-basis-chip').forEach((el) => {
-      if ((el.innerText || '').includes('-')) el.style.display = 'none';
-    });
+    document.querySelectorAll('.hm-qa-market-inline').forEach((el) => el.remove());
   };
 
   const replaceText = () => {
@@ -261,7 +185,7 @@
     });
 
     patchTickerInputs();
-    renderMarketStateFallback();
+    removeMarketStateFallback();
   };
 
   const refreshState = async () => {
