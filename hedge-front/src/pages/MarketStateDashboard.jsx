@@ -141,7 +141,7 @@ const NOWCAST_CODE_LABELS = {
   global_risk_spillover_intraday: '글로벌 위험회피 한국 전이',
   krw_weakness_intraday: '원화약세 장중 압력',
   kr_semiconductor_pressure_intraday: '한국 반도체 장중 부담',
-  kr_defensive_rotation_intraday: '한국장 방어적 로테이션',
+  kr_defensive_rotation_intraday: '한국장 방어주 상대강세',
 };
 
 const ScenarioCard = ({ row, compact = false }) => {

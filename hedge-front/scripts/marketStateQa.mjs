@@ -27,8 +27,8 @@ if (source.includes('Top5 뉴스 오버레이가 아직 없습니다')) {
 if (source.includes('신뢰도')) {
   fail('market-state page should not render confidence copy');
 }
-if (source.includes('방어주 상대') || source.includes('방어주 강세')) {
-  fail('defensive nowcast label must not imply absolute defensive-stock strength');
+if (source.includes('한국장 방어적 로테이션')) {
+  fail('defensive nowcast label must use the previous user-facing wording');
 }
 
 requireIncludes('if (!rows.length) return null;', 'empty news fallback behavior');
@@ -36,7 +36,7 @@ requireIncludes("const statusText = '뉴스 참고 자료';", 'minimal news stat
 requireIncludes('formatKstDateOnly(item.date', 'date-only news rendering');
 requireIncludes('출처: {source}', 'source link rendering');
 requireIncludes('시장 뉴스 참고자료', 'neutral news section title');
-requireIncludes('한국장 방어적 로테이션', 'relative defensive rotation label');
+requireIncludes('한국장 방어주 상대강세', 'relative defensive strength label');
 requireIncludes('nowcast-driver-list', 'nowcast driver evidence chips');
 requireIncludes('const primary = hasDailyPrimary ?', 'daily market state primary selection');
 requireIncludes('<span className="state-chip neutral">시장국면</span>', 'market-state label chip');

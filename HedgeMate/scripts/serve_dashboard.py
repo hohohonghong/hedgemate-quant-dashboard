@@ -5656,7 +5656,7 @@ NOWCAST_DISPLAY_FALLBACKS = {
         "interpretationKo": "삼성전자, SK하이닉스와 글로벌 반도체 proxy를 함께 보며 반도체 노출의 장중 부담을 점검합니다.",
     },
     "kr_defensive_rotation_intraday": {
-        "nameKo": "한국장 방어적 로테이션",
+        "nameKo": "한국장 방어주 상대강세",
         "interpretationKo": "방어 성격 basket이 지수·성장주보다 상대적으로 덜 약한지 확인하는 장중 rotation 신호입니다.",
     },
 }

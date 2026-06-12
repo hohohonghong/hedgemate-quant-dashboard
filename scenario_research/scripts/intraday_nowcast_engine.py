@@ -179,7 +179,7 @@ NOWCAST_DEFINITIONS = [
     },
     {
         "code": "kr_defensive_rotation_intraday",
-        "name_ko": "한국장 방어적 로테이션",
+        "name_ko": "한국장 방어주 상대강세",
         "lens": "korea_market",
         "interpretation_ko": "바이오/금융 등 방어 성격 basket이 지수·성장주보다 상대적으로 덜 약한지 확인해 장중 방어적 rotation을 표시합니다.",
         "strong_status": "DEFENSIVE_ROTATION",
