@@ -37,6 +37,7 @@ requireIncludes('formatKstDateOnly(item.date', 'date-only news rendering');
 requireIncludes('출처: {source}', 'source link rendering');
 requireIncludes('시장 뉴스 참고자료', 'neutral news section title');
 requireIncludes('한국장 방어주 상대강세', 'relative defensive strength label');
+requireIncludes("DEFENSIVE_ROTATION: '방어주 상대강세'", 'defensive state chip label');
 requireIncludes('nowcast-driver-list', 'nowcast driver evidence chips');
 requireIncludes('const primary = hasDailyPrimary ?', 'daily market state primary selection');
 requireIncludes('<span className="state-chip neutral">시장국면</span>', 'market-state label chip');

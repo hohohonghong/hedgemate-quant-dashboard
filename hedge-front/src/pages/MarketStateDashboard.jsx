@@ -92,7 +92,7 @@ const STATE_LABELS = {
   FX_PRESSURE: '환율 부담',
   RISK_OFF_SPILLOVER: '위험회피 전이',
   RISK_ON: '위험선호',
-  DEFENSIVE_ROTATION: '방어적 회전',
+  DEFENSIVE_ROTATION: '방어주 상대강세',
   INSUFFICIENT_HISTORY: '자료 부족',
 };
 
