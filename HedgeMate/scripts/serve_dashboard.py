@@ -4791,8 +4791,21 @@ def launch_startup_market_refresh_if_needed(runner=subprocess.run, thread_factor
         "dataVersion": today_stamp,
         "runStamp": datetime.now(KST).strftime("%Y%m%dT%H%M%S"),
         "startupRefresh": True,
+        "followupPortfolioReanalysis": True,
     }
     return launch_refresh_market_data_job(payload, runner=runner, thread_factory=thread_factory)
+
+
+def startup_portfolio_reanalysis_needed(freshness):
+    freshness = freshness if isinstance(freshness, dict) else {}
+    if not (freshness.get("marketDataFresh") and freshness.get("scenarioFinalFresh")):
+        return False
+    data_version = str(freshness.get("dataVersion") or "")
+    market_data_version = str(freshness.get("marketDataVersion") or "")
+    return bool(
+        freshness.get("activeBundleOlderThanMarketCache")
+        or (data_version and market_data_version and data_version != market_data_version)
+    )
 
 
 def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_factory=threading.Thread):
@@ -4844,8 +4857,18 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
         and not failed_market_tickers
     )
     market_data_attempted_but_not_fresh = bool(freshness.get("marketDataRefreshAttempted") and not freshness.get("marketDataFresh"))
+    startup_followup_portfolio_reanalysis_pending = bool(
+        mode == "market_data_only"
+        and payload.get("startupRefresh")
+        and payload.get("followupPortfolioReanalysis")
+        and startup_portfolio_reanalysis_needed(freshness)
+    )
     should_skip_latest = not force and (
-        (mode == "market_data_only" and (market_data_only_current or market_data_attempted_but_not_fresh))
+        (
+            mode == "market_data_only"
+            and not startup_followup_portfolio_reanalysis_pending
+            and (market_data_only_current or market_data_attempted_but_not_fresh)
+        )
         or (mode == "full_rebuild" and freshness.get("skipHeavyRefresh"))
         or (mode == "intraday_nowcast" and intraday_status and intraday_status.get("fresh"))
     )
@@ -4900,6 +4923,28 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
             update_refresh_job_record(job_id, "RUNNING", finished=False)
             _update_run_job(job_id, status="running", stage=mode)
             _run_refresh_market_data_job(job_id, payload, runner)
+            market_refresh_snapshot = _snapshot_run_job(job_id) or {}
+            if (
+                mode == "market_data_only"
+                and payload.get("startupRefresh")
+                and payload.get("followupPortfolioReanalysis")
+                and startup_portfolio_reanalysis_needed(load_data_freshness())
+            ):
+                portfolio_payload = scheduled_portfolio_reanalysis_payload()
+                if portfolio_payload:
+                    portfolio_payload["startupRefresh"] = True
+                    _run_refresh_market_data_job(job_id, portfolio_payload, runner)
+                    followup_snapshot = _snapshot_run_job(job_id) or {}
+                    followup_result = dict(followup_snapshot.get("result") or {})
+                    followup_result["startupMarketRefresh"] = market_refresh_snapshot.get("result")
+                    _update_run_job(job_id, result=followup_result)
+                else:
+                    market_result = dict(market_refresh_snapshot.get("result") or {})
+                    market_result["startupPortfolioReanalysis"] = {
+                        "skipped": True,
+                        "reason": "no_active_portfolio",
+                    }
+                    _update_run_job(job_id, result=market_result)
             snapshot = _snapshot_run_job(job_id) or {}
             update_refresh_job_record(job_id, "SUCCESS", finished=True)
             record_data_snapshot_for_refresh(job_type, "SUCCESS", payload=payload, result=snapshot.get("result") or snapshot)

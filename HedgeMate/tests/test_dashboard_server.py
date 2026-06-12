@@ -1732,6 +1732,68 @@ class DashboardServerTests(unittest.TestCase):
         payload = launcher.call_args.args[0]
         self.assertEqual(payload["mode"], "market_data_only")
         self.assertTrue(payload["startupRefresh"])
+        self.assertTrue(payload["followupPortfolioReanalysis"])
+
+    def test_startup_market_refresh_runs_portfolio_reanalysis_when_active_bundle_lags(self):
+        class ImmediateThread:
+            def __init__(self, target, args=(), kwargs=None, daemon=None):
+                self.target = target
+                self.args = args
+                self.kwargs = kwargs or {}
+
+            def start(self):
+                self.target(*self.args, **self.kwargs)
+
+        calls = []
+
+        def fake_refresh(job_id, payload, runner):
+            calls.append(payload["mode"])
+            serve_dashboard._update_run_job(
+                job_id,
+                status="completed",
+                stage="complete",
+                result={"ok": True, "mode": payload["mode"]},
+            )
+
+        stale_analysis_freshness = {
+            "status": "stale",
+            "skipHeavyRefresh": False,
+            "marketDataFresh": True,
+            "scenarioFinalFresh": True,
+            "marketDataStaleTickers": [],
+            "marketDataFailedTickers": [],
+            "activeBundleOlderThanMarketCache": True,
+            "dataVersion": "20260610",
+            "marketDataVersion": "20260612",
+        }
+
+        with serve_dashboard.RUN_JOBS_LOCK:
+            serve_dashboard.RUN_JOBS.clear()
+        with mock.patch.object(serve_dashboard, "load_data_freshness", return_value=stale_analysis_freshness), \
+             mock.patch.object(serve_dashboard, "_run_refresh_market_data_job", side_effect=fake_refresh), \
+             mock.patch.object(
+                 serve_dashboard,
+                 "scheduled_portfolio_reanalysis_payload",
+                 return_value={
+                     "mode": "portfolio_reanalysis",
+                     "dataVersion": "20260612",
+                     "portfolioRows": [{"ticker": "AAPL", "amountKrw": 10_000_000}],
+                 },
+             ):
+            job = serve_dashboard.launch_refresh_market_data_job(
+                {
+                    "mode": "market_data_only",
+                    "startupRefresh": True,
+                    "followupPortfolioReanalysis": True,
+                },
+                runner=lambda *_args, **_kwargs: None,
+                thread_factory=ImmediateThread,
+            )
+
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(calls, ["market_data_only", "portfolio_reanalysis"])
+        self.assertEqual(job["result"]["mode"], "portfolio_reanalysis")
+        self.assertEqual(job["result"]["startupMarketRefresh"]["mode"], "market_data_only")
 
     def test_intraday_nowcast_refresh_skips_when_anchor_is_current(self):
         class ImmediateThread:
