@@ -142,15 +142,16 @@ class DashboardServerTests(unittest.TestCase):
         env = popen.call_args.kwargs["env"]
         self.assertIn("scripts/serve_dashboard.py", command)
         self.assertNotIn("scripts/serve_dashboard_beecast.py", command)
+        self.assertNotIn("--no-startup-refresh", command)
         self.assertNotIn("--no-scheduler", command)
         self.assertNotIn("HEDGEMATE_SERVER_SAFE_MODE", env)
         self.assertEqual(env["HEDGEMATE_SCHEDULER_INITIAL_DELAY_SECONDS"], "0")
 
-    def test_deployment_start_backend_keeps_startup_refresh_when_explicitly_enabled(self):
+    def test_deployment_start_backend_keeps_startup_refresh_by_default(self):
         app = self._load_deployment_app()
 
         with mock.patch.object(app.subprocess, "Popen") as popen, \
-             mock.patch.dict(app.os.environ, {"HEDGEMATE_ENABLE_STARTUP_REFRESH": "1"}, clear=True):
+             mock.patch.dict(app.os.environ, {}, clear=True):
             app.start_backend()
 
         command = popen.call_args.args[0]

@@ -68,13 +68,6 @@ const calcBarWidth = (portfolioData, type, metricKey) => {
   return Math.min(100, (value / (base * 1.15)) * 100);
 };
 
-const actionStatusClass = (status) => {
-  if (status === 'FORMAL_ACTION') return 'status-ready';
-  if (status === 'REVIEW_ACTION') return 'status-review';
-  if (status === 'FAIL_ACTION') return 'status-fail';
-  return 'status-muted';
-};
-
 const actionTypeLabel = (type) => {
   if (type === 'TRIM_AND_HEDGE') return '비중 축소 + 헷지';
   if (type === 'ADD_HEDGE') return '헷지 추가 검토';
@@ -272,7 +265,6 @@ export const ImprovementReport = () => {
   const [selectedMetric, setSelectedMetric] = useState('cvar');
   const [animateBars, setAnimateBars] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
-  const [showAllActionCards, setShowAllActionCards] = useState(false);
   const [dashboardPayload, setDashboardPayload] = useState(null);
   const [portfolioPreview, setPortfolioPreview] = useState(null);
   const [previewError, setPreviewError] = useState('');
@@ -396,12 +388,6 @@ export const ImprovementReport = () => {
     && (portfolioPreview?.analysisRows || []).length === 1
     && (portfolioPreview?.rows || []).some((row) => Number(row.weightPct) > 50),
   );
-  const actionCards = reportModel?.actionCards || [];
-  const reviewCandidateRows = reportModel?.candidateRows || [];
-  const visibleActionCards = showAllActionCards ? actionCards : actionCards.slice(0, 3);
-  const visibleReviewCandidateRows = showAllActionCards ? reviewCandidateRows : reviewCandidateRows.slice(0, 3);
-  const hasMoreActionCards = actionCards.length > 3 || (actionCards.length === 0 && reviewCandidateRows.length > 3);
-  const hiddenActionCardCount = Math.max(0, (actionCards.length > 0 ? actionCards.length : reviewCandidateRows.length) - 3);
   const apiErrorIsTimeout = /요청 시간이 초과|timeout|timed out/i.test(apiError || '');
 
   useEffect(() => {
@@ -596,10 +582,6 @@ export const ImprovementReport = () => {
     const timer = setTimeout(() => setAnimateBars(true), 300);
     return () => clearTimeout(timer);
   }, [selectedPortfolioId, dashboardPayload, selectedMetric]);
-
-  useEffect(() => {
-    setShowAllActionCards(false);
-  }, [selectedPortfolioId, dashboardPayload]);
 
   const handlePortfolioChange = (id) => {
     persistReportPortfolioId(id);
@@ -1415,122 +1397,6 @@ export const ImprovementReport = () => {
 
             </>
           )}
-
-          <section className="chart-card mt-6">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h3 className="font-semibold">추천 조정안</h3>
-                <p className="text-xs text-secondary mt-1">현재 포트폴리오에서 우선 확인할 조정 후보를 표시합니다.</p>
-              </div>
-            </div>
-            {reportModel.actionCards.length === 0 && reportModel.candidateRows.length > 0 && (
-              <div className="candidate-gate-summary mb-4">
-                <strong>평가 후보 {reportModel.decisionBanner.counts.evaluatedCandidates}개 · 우선 추천 0개</strong>
-                <span>
-                  우선 추천 기준을 충족한 조정안은 없습니다. 참고 후보는 아래 카드와 세부 표에서 확인할 수 있습니다.
-                </span>
-              </div>
-            )}
-            {reportModel.actionCards.length === 0 && reportModel.candidateRows.length > 0 && (
-              <div className="review-candidate-grid mb-4">
-                {visibleReviewCandidateRows.map((candidate, index) => (
-                  <article className="review-candidate-card" key={`review-${candidate.id}`}>
-                    <div className="flex justify-between items-start gap-3">
-                      <div>
-                        <span className={`action-status ${actionStatusClass(candidate.status)}`}>
-                          {index === 0 ? 'BEST 조정 후보' : '조정 후보'}
-                        </span>
-                        <span className={`grade-badge grade-${(candidate.recommendationGrade || 'none').toLowerCase()}`}>
-                          {candidate.recommendationGradeLabel}
-                        </span>
-                        {candidate.userDisplayScore !== null && candidate.userDisplayScore !== undefined && (
-                          <span className={`recommendation-score grade-${(candidate.recommendationGrade || 'none').toLowerCase()}`}>
-                            추천 점수 {candidate.userDisplayScore}/100
-                          </span>
-                        )}
-                        <h4>{actionTypeLabel(candidate.actionType)} · {formatAssetList(candidate.hedgeTickers || candidate.hedgeAsset, assetLabelMap)}</h4>
-                      </div>
-                      <span className="text-xs text-secondary">#{index + 1}</span>
-                    </div>
-                    <ActionAssetRoute
-                      source={candidate.sourceTickers || candidate.sourceAsset}
-                      hedge={candidate.hedgeTickers || candidate.hedgeAsset}
-                      assetLabelMap={assetLabelMap}
-                    />
-                    <AdjustmentRatioList rows={candidate.adjustmentRows || []} assetLabelMap={assetLabelMap} idPrefix={`review-${candidate.id}`} />
-                    <p className="text-xs text-secondary mt-3">{candidate.riskSleeveLabel}</p>
-                    <p className="text-xs mt-3">{humanizeAssetText(candidate.reason || '추천 기준을 충족하지 않아 공식 추천이 아닙니다.', assetLabelMap)}</p>
-                    <div className="action-mini-metrics">
-                      <span>취약성 개선 후보값 {candidate.improvePct.toFixed(1)}%</span>
-                      <span>공식 추천 아님</span>
-                    </div>
-                    <details className="score-detail">
-                      <summary>세부 지표</summary>
-                      <div>
-                        <span>linked final_score {formatInternalScore(candidate.linkedFinalScore)}</span>
-                        <span>{candidate.scoreBand}</span>
-                        <span>{candidate.scoreMethodVersion}</span>
-                      </div>
-                    </details>
-                  </article>
-                ))}
-              </div>
-            )}
-            <div className="action-card-grid">
-              {visibleActionCards.map((action) => (
-                <article className="action-card" key={action.id}>
-                  <div className="flex justify-between items-start gap-3">
-                    <div>
-                      <span className={`action-status ${actionStatusClass(action.displayStatus || action.actionStatus)}`}>{cleanActionLabel(action.badge)}</span>
-                      <span className={`grade-badge grade-${(action.recommendationGrade || 'none').toLowerCase()}`}>
-                        {action.recommendationGradeLabel}
-                      </span>
-                      {action.userDisplayScore !== null && action.userDisplayScore !== undefined && (
-                        <span className={`recommendation-score grade-${(action.recommendationGrade || 'none').toLowerCase()}`}>
-                          추천 점수 {action.userDisplayScore}/100
-                        </span>
-                      )}
-                      <h4>{cleanActionLabel(action.title)}</h4>
-                    </div>
-                    <span className="text-xs text-secondary">#{action.rank}</span>
-                  </div>
-                  <p className="text-xs text-secondary mt-3">{action.riskSleeveLabel}</p>
-                  <ActionAssetRoute
-                    source={action.sourceTickers || action.sourceAsset}
-                    hedge={action.hedgeTickers || action.hedgeAsset || action.candidateLabel}
-                    assetLabelMap={assetLabelMap}
-                  />
-                  <AdjustmentRatioList rows={action.adjustmentRows || []} assetLabelMap={assetLabelMap} idPrefix={`action-${action.id}`} />
-                  <p className="text-xs mt-3">{humanizeAssetText(action.expectedEffect || action.actionReasonKo, assetLabelMap)}</p>
-                  {action.recommendationGradeReason && (
-                    <p className="text-xs text-secondary mt-2">{humanizeAssetText(action.recommendationGradeReason, assetLabelMap)}</p>
-                  )}
-                  <div className="action-mini-metrics">
-                    <span>CVaR {formatMetricDelta(action.baseMetrics.cvar, action.proposedMetrics.cvar, 'cvar')}</span>
-                    <span>MDD {formatMetricDelta(action.baseMetrics.mdd, action.proposedMetrics.mdd, 'mdd')}</span>
-                    <span>Sharpe {formatMetricDelta(action.baseMetrics.sharpe, action.proposedMetrics.sharpe, 'sharpe')}</span>
-                    {action.basisRiskLevel && <span>basis risk {action.basisRiskLevel}</span>}
-                  </div>
-                  <details className="score-detail">
-                    <summary>세부 지표</summary>
-                    <div>
-                      <span>linked final_score {formatInternalScore(action.linkedFinalScore)}</span>
-                      <span>prescription_score {formatInternalScore(action.prescriptionScore)}</span>
-                      <span>{action.scoreBand}</span>
-                      <span>{action.scoreMethodVersion}</span>
-                    </div>
-                  </details>
-                </article>
-              ))}
-            </div>
-            {hasMoreActionCards && (
-              <div className="show-more-actions">
-                <Button variant="outline" className="text-sm" onClick={() => setShowAllActionCards((current) => !current)}>
-                  {showAllActionCards ? '접기' : `더보기 ${hiddenActionCardCount}개`}
-                </Button>
-              </div>
-            )}
-          </section>
 
           <details className="chart-card mt-6 candidate-details">
             <summary>전체 후보와 근거 보기</summary>

@@ -21,7 +21,6 @@ ROOT = Path(__file__).resolve().parent
 PUBLIC_PORT = int(os.environ.get("PORT", "8000"))
 BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8766"))
 NO_STARTUP_REFRESH_VALUES = {"1", "true", "yes", "on"}
-ENABLE_STARTUP_REFRESH_VALUES = {"1", "true", "yes", "on"}
 TRUTHY_VALUES = {"1", "true", "yes", "on"}
 EXTERNAL_API_ENV_KEYS = (
     "HEDGEMATE_EXTERNAL_API_BASE",
@@ -81,7 +80,7 @@ def log_startup_diagnostics():
 def startup_refresh_disabled():
     if os.environ.get("HEDGEMATE_NO_STARTUP_REFRESH", "").strip().lower() in NO_STARTUP_REFRESH_VALUES:
         return True
-    return os.environ.get("HEDGEMATE_ENABLE_STARTUP_REFRESH", "").strip().lower() not in ENABLE_STARTUP_REFRESH_VALUES
+    return False
 
 
 def external_api_base():
