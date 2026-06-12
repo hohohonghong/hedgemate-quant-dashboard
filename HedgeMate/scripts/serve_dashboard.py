@@ -274,7 +274,7 @@ STAGE_DETAILS = {
     "updating active dashboard bundle": ("백엔드 최신 분석 결과 갱신 중", "선택 포트폴리오 기준 산출물을 active bundle에 연결합니다."),
     "refreshing": ("시장데이터 갱신 중", "시장데이터와 시나리오 산출물을 최신화합니다."),
     "running refresh pipeline": ("시장데이터 갱신 중", "raw market data와 final market state를 재생성합니다."),
-    "intraday news overlay": ("뉴스 오버레이 갱신 중", "시장국면 보조 설명용 Top5 뉴스 리스크를 갱신합니다."),
+    "intraday news overlay": ("뉴스 오버레이 갱신 중", "시장국면 보조 설명용 뉴스 리스크를 갱신합니다."),
     "skipped_latest": ("최신 데이터 확인 완료", "이미 오늘 기준 최신 데이터입니다."),
     "blocked_by_existing_job": ("시장데이터 확인 대기", "다른 시장데이터 작업이 진행 중입니다."),
     "complete": ("완료", "작업이 완료되었습니다."),
@@ -1979,12 +1979,14 @@ def active_portfolio_rows_for_reanalysis(manifest=None):
 
 
 def scheduled_portfolio_reanalysis_payload(manifest=None):
-    manifest = manifest if isinstance(manifest, dict) else read_product_manifest()
+    explicit_manifest = isinstance(manifest, dict)
+    manifest = manifest if explicit_manifest else read_product_manifest()
     rows = active_portfolio_rows_for_reanalysis(manifest)
     if not rows:
         return None
-    context = latest_scenario_bundle_context(manifest)
-    data_version = context.get("dataVersion") or active_data_version(manifest) or datetime.now(KST).strftime("%Y%m%d")
+    context = {} if explicit_manifest else latest_scenario_bundle_context(manifest)
+    data_version = active_data_version(manifest) if explicit_manifest else context.get("dataVersion")
+    data_version = data_version or active_data_version(manifest) or datetime.now(KST).strftime("%Y%m%d")
     return {
         "mode": "portfolio_reanalysis",
         "schedulerRefresh": True,
@@ -5609,8 +5611,8 @@ NOWCAST_DISPLAY_FALLBACKS = {
         "interpretationKo": "삼성전자, SK하이닉스와 글로벌 반도체 proxy를 함께 보며 반도체 노출의 장중 부담을 점검합니다.",
     },
     "kr_defensive_rotation_intraday": {
-        "nameKo": "한국장 방어주 상대 강세",
-        "interpretationKo": "방어 업종 basket이 성장/민감 업종보다 상대적으로 강한지 확인하는 장중 rotation 신호입니다.",
+        "nameKo": "한국장 방어적 로테이션",
+        "interpretationKo": "방어 성격 basket이 지수·성장주보다 상대적으로 덜 약한지 확인하는 장중 rotation 신호입니다.",
     },
 }
 

@@ -56,6 +56,16 @@ requireIncludes('재분석 중', 'running analysis CTA text');
 requireIncludes('최신 시장데이터는 반영됐지만 현재 리포트는 이전 분석 결과입니다. 최신 데이터로 재분석하세요.', 'stale analysis warning');
 requireIncludes('공통 시장데이터 갱신이 백그라운드에서 진행 중입니다. 완료 후 포트폴리오 분석을 다시 실행해 주세요.', 'background refresh warning');
 requireIncludes('시장데이터가 최신 상태가 아닙니다. 스케줄러 갱신 또는 명시적 갱신 완료 후 분석을 실행해 주세요.', 'stale data preflight warning');
+requireIncludes('getAssets({ timeoutMs: 30 * 1000 })', 'backend asset label loading');
+requireIncludes('formatAssetWithTicker', 'human-readable asset label formatter');
+requireIncludes('ActionAssetRoute', 'human-readable action route component');
+requireIncludes('AdjustmentRatioList', 'adjustment ratio component');
+requireIncludes('formatAssetList(row.sourceTickers || row.sourceAsset, assetLabelMap)', 'candidate table source asset labeling');
+requireIncludes('formatAssetList(row.hedgeTickers || row.hedgeAsset, assetLabelMap)', 'candidate table hedge asset labeling');
+
+if (source.includes('sourceAssetsText(action)')) {
+  fail('raw ticker action route helper must receive the asset label map');
+}
 
 if (source.includes('>시장데이터 갱신<') || source.includes('시장데이터 갱신</Button>')) {
   fail('do not add a separate market-data refresh button');

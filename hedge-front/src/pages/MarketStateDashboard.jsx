@@ -81,6 +81,23 @@ const stateTone = (state) => {
   return 'muted';
 };
 
+const STATE_LABELS = {
+  ACTIVE: '활성',
+  WATCH: '관찰',
+  STRESS: '스트레스',
+  OFF: '비활성',
+  NEUTRAL: '중립',
+  PROVISIONAL: '임시',
+  PRESSURE: '부담',
+  FX_PRESSURE: '환율 부담',
+  RISK_OFF_SPILLOVER: '위험회피 전이',
+  RISK_ON: '위험선호',
+  DEFENSIVE_ROTATION: '방어적 회전',
+  INSUFFICIENT_HISTORY: '자료 부족',
+};
+
+const stateLabel = (state) => STATE_LABELS[String(state || '').toUpperCase()] || state || '-';
+
 const looksMojibake = (value) => {
   const text = String(value || '');
   return text.includes('�') || (text.includes('?') && /[가-힣]/.test(text)) || (text.match(/\?/g) || []).length >= 2 || /[媛湲諛愿吏]|쨌|\?쒓|\?μ|\?꾩|\?먰/.test(text);
@@ -94,9 +111,10 @@ const cleanText = (value, fallback = '') => {
 
 const scenarioLabel = (row) => {
   if (!row) return '시장국면';
-  if (row.nameKo) return cleanText(row.nameKo, '시장국면');
   const nowcastCode = row.nowcast_code || (row.source === 'intraday_nowcast' ? row.code : '');
   const scenarioCode = row.scenario_code || (row.source === 'daily_final' ? row.code : '');
+  if (NOWCAST_CODE_LABELS[nowcastCode]) return NOWCAST_CODE_LABELS[nowcastCode];
+  if (row.nameKo) return cleanText(row.nameKo, '시장국면');
   const fallback = NOWCAST_CODE_LABELS[nowcastCode] || DAILY_SCENARIO_CODE_LABELS[scenarioCode] || nowcastCode || scenarioCode || '시장국면';
   return cleanText(row.nowcast_name_ko || row.scenario_name_ko || row.scenario_name, fallback);
 };
@@ -123,13 +141,19 @@ const NOWCAST_CODE_LABELS = {
   global_risk_spillover_intraday: '글로벌 위험회피 한국 전이',
   krw_weakness_intraday: '원화약세 장중 압력',
   kr_semiconductor_pressure_intraday: '한국 반도체 장중 부담',
-  kr_defensive_rotation_intraday: '한국장 방어주 상대 강세',
+  kr_defensive_rotation_intraday: '한국장 방어적 로테이션',
 };
 
 const ScenarioCard = ({ row, compact = false }) => {
   const state = row.final_display_state || row.display_state || row.structured_display_state || row.status || row.raw_state;
   const score = row.final_score ?? row.score ?? row.structured_score;
-  const confidence = row.final_confidence ?? row.confidence ?? row.structured_confidence;
+  const interpretation = row.market_interpretation_ko || row.interpretation_ko;
+  const driverText = row.top_positive_drivers || row.topPositiveDrivers || '';
+  const drivers = String(driverText || '')
+    .split('|')
+    .map((item) => cleanText(item).trim())
+    .filter(Boolean)
+    .slice(0, 3);
   return (
     <article className={`market-scenario-card ${compact ? 'compact' : ''}`}>
       <div className="market-card-head">
@@ -137,16 +161,21 @@ const ScenarioCard = ({ row, compact = false }) => {
           <h3>{scenarioLabel(row)}</h3>
           <p>{row.scenario_name || row.scenario_code || row.lens || row.nowcast_code || '-'}</p>
         </div>
-        <span className={`state-chip ${stateTone(state)}`}>{state || '-'}</span>
+        <span className={`state-chip ${stateTone(state)}`}>{stateLabel(state)}</span>
       </div>
       <div className="score-line">
-        <span>Score {formatNumber(score)}</span>
-        <strong>Confidence {formatNumber(confidence)}</strong>
+        <span>점수</span>
+        <strong>{formatNumber(score)}</strong>
       </div>
       <div className="score-meter">
         <div className="score-meter-fill" style={progressStyle(score)} />
       </div>
-      {row.market_interpretation_ko && <p className="market-interpretation">{row.market_interpretation_ko}</p>}
+      {interpretation && <p className="market-interpretation">{cleanText(interpretation)}</p>}
+      {drivers.length > 0 && (
+        <div className="nowcast-driver-list" aria-label="단기 신호 근거">
+          {drivers.map((driver) => <span key={driver}>{driver}</span>)}
+        </div>
+      )}
     </article>
   );
 };
@@ -261,7 +290,6 @@ const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLea
   const intradayReferenceSignal = (nowcastLeaders || []).find(isDisplayableNowcast);
   const primaryState = primary.state || 'ACTIVE';
   const primaryScore = primary.score;
-  const primaryConfidence = primary.confidence;
   const activeCount = stateCounts.find((item) => String(item.state).toUpperCase() === 'ACTIVE')?.count ?? activeScenarios.length;
   const watchCount = stateCounts.find((item) => String(item.state).toUpperCase() === 'WATCH')?.count ?? 0;
   const offCount = stateCounts.find((item) => String(item.state).toUpperCase() === 'OFF')?.count ?? 0;
@@ -296,7 +324,7 @@ const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLea
         <span className="summary-kicker">현재 시장국면 진단 · {referenceText}</span>
         <div className="summary-title-row">
           <h2>{scenarioLabel(primary)}</h2>
-          <span className={`state-chip ${stateTone(primaryState)}`}>{primaryState}</span>
+          <span className={`state-chip ${stateTone(primaryState)}`}>{stateLabel(primaryState)}</span>
           <span className="state-chip neutral">시장국면</span>
         </div>
         <p>{summaryCopy}</p>
@@ -314,11 +342,9 @@ const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLea
             <span className={`summary-scenario-chip ${stateTone(row.final_display_state || row.display_state)}`} key={row.scenario_code}>
               <span>{scenarioLabel(row)}</span>
               <small>
-                {row.final_display_state || row.display_state || 'ACTIVE'}
+                {stateLabel(row.final_display_state || row.display_state || 'ACTIVE')}
                 {' · 점수 '}
                 {formatNumber(row.final_score ?? row.score ?? row.activation_weight, 1)}
-                {' · 신뢰도 '}
-                {formatNumber(row.final_confidence ?? row.confidence, 1)}
               </small>
             </span>
           ))}
@@ -330,7 +356,7 @@ const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLea
               <strong>
                 {scenarioLabel(intradayReferenceSignal)}
                 {' · '}
-                {intradaySignalStatus || '-'}
+                {stateLabel(intradaySignalStatus)}
                 {' · '}
                 {formatNumber(intradaySignalScore, 1)}
               </strong>
@@ -343,7 +369,6 @@ const MarketSummaryCard = ({ dashboard, activeScenarios, stateCounts, nowcastLea
       <div className="market-simple-score">
         <strong>{formatNumber(primaryScore, 1)}</strong>
         <span>MARKET STATE SCORE</span>
-        <p>신뢰도 {formatNumber(primaryConfidence, 1)}</p>
         <div className="score-meter">
           <div className="score-meter-fill" style={progressStyle(primaryScore)} />
         </div>
@@ -369,10 +394,10 @@ const NewsRiskOverlaySection = ({ items, status, isRefreshing, refreshStatus }) 
       <div className="market-section-head">
         <div>
           <span>시장국면 판단 보조 근거</span>
-          <h2>Top5 뉴스 리스크 오버레이</h2>
+          <h2>시장 뉴스 참고자료</h2>
         </div>
         <span className={`section-chip ${isRefreshing ? 'refreshing' : ''}`}>
-          {isRefreshing ? '갱신 중' : `${rows.length}/5`}
+          {isRefreshing ? '갱신 중' : `${rows.length}건`}
         </span>
       </div>
 
@@ -390,7 +415,7 @@ const NewsRiskOverlaySection = ({ items, status, isRefreshing, refreshStatus }) 
           const hasSourceLink = /^https?:\/\//i.test(url);
           return (
             <article className="news-overlay-item" key={`${title || 'news'}-${index}`}>
-              <div className="news-overlay-rank">{index + 1}</div>
+              <div className="news-overlay-rank" aria-hidden="true">•</div>
               <div className="news-overlay-body">
                 <div className="news-overlay-title-row">
                   <h3>{title}</h3>

@@ -325,6 +325,25 @@
   line-height: 1.55;
 }
 
+.nowcast-driver-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.nowcast-driver-list span {
+  max-width: 100%;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.08);
+  color: var(--text-secondary);
+  font-size: 0.66rem;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
 .market-section-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);

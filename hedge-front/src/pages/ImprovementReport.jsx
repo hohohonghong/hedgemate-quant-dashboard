@@ -3,8 +3,9 @@ import { Shield, Rocket, ChevronDown, ChevronUp, Briefcase, AlertCircle, ArrowRi
 import { Button } from '../components/Button';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePortfolios } from '../context/PortfolioContext';
-import { getHedgeMateStatus, getProductDashboard, pollRunStatus, previewPortfolio, runPortfolioAnalysis, toBackendPortfolioRows } from '../services/hedgemateApi';
+import { getAssets, getHedgeMateStatus, getProductDashboard, pollRunStatus, previewPortfolio, runPortfolioAnalysis, toBackendPortfolioRows } from '../services/hedgemateApi';
 import { METRIC_DEFINITIONS, formatMetricDelta, formatMetricValue, toHedgeMateViewModel } from '../services/hedgemateViewModel';
+import { ASSET_DATABASE, normalizeTickerSymbol } from '../utils/helpers';
 import {
   getStoredAnalysisRunForPortfolio,
   persistAnalysisRunForPortfolio,
@@ -82,10 +83,106 @@ const actionTypeLabel = (type) => {
   return type || '조정 후보';
 };
 
-const sourceAssetsText = (action) => {
-  const source = action?.sourceTickers?.join(', ') || '원인 자산 확인 필요';
-  const hedge = action?.hedgeTickers?.join(', ') || action?.candidateLabel || '헷지 후보 확인 필요';
-  return `${source} → ${hedge}`;
+const normalizeAssetLabelKey = (ticker) => normalizeTickerSymbol(String(ticker || '').trim());
+
+const splitAssetSymbols = (value) => {
+  if (Array.isArray(value)) return value.map(normalizeAssetLabelKey).filter(Boolean);
+  return String(value || '')
+    .split(/[|,+]/)
+    .map(normalizeAssetLabelKey)
+    .filter(Boolean);
+};
+
+const buildAssetLabelMap = (assets = [], portfolios = []) => {
+  const map = new Map();
+  Object.entries(ASSET_DATABASE).forEach(([ticker, meta]) => {
+    const normalized = normalizeAssetLabelKey(meta.aliasFor || ticker);
+    if (normalized && meta?.name) map.set(normalized, meta.name);
+  });
+  assets.forEach((asset) => {
+    const ticker = normalizeAssetLabelKey(asset.ticker);
+    const label = asset.popularName || asset.label || asset.displayLabel || asset.name;
+    if (ticker && label) map.set(ticker, String(label).replace(/\s*\([^)]*\)\s*$/, '').trim());
+  });
+  portfolios.forEach((portfolio) => {
+    (portfolio.assets || []).forEach((asset) => {
+      const ticker = normalizeAssetLabelKey(asset.ticker || asset.symbol || asset.name);
+      if (ticker && asset.name && asset.name !== ticker) map.set(ticker, asset.name);
+    });
+  });
+  return map;
+};
+
+const assetDisplayName = (ticker, assetLabelMap) => {
+  const normalized = normalizeAssetLabelKey(ticker);
+  return assetLabelMap.get(normalized) || ASSET_DATABASE[normalized]?.name || normalized || ticker || '-';
+};
+
+const formatAssetWithTicker = (ticker, assetLabelMap) => {
+  const normalized = normalizeAssetLabelKey(ticker);
+  const label = assetDisplayName(normalized, assetLabelMap);
+  if (!normalized) return label;
+  return label && label !== normalized ? `${label} (${normalized})` : normalized;
+};
+
+const formatAssetList = (value, assetLabelMap) => {
+  const tickers = splitAssetSymbols(value);
+  return tickers.length
+    ? tickers.map((ticker) => formatAssetWithTicker(ticker, assetLabelMap)).join(', ')
+    : '확인 필요';
+};
+
+const sourceAssetsText = (action, assetLabelMap) => {
+  const source = action?.sourceTickers?.length ? action.sourceTickers : action?.sourceAsset;
+  const hedge = action?.hedgeTickers?.length ? action.hedgeTickers : (action?.hedgeAsset || action?.candidateLabel);
+  return `${formatAssetList(source, assetLabelMap)} → ${formatAssetList(hedge, assetLabelMap)}`;
+};
+
+const humanizeAssetText = (value, assetLabelMap) => {
+  let text = String(value || '');
+  const tickers = [...assetLabelMap.keys()]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  tickers.forEach((ticker) => {
+    const label = formatAssetWithTicker(ticker, assetLabelMap);
+    if (label && label !== ticker) {
+      text = text.replaceAll(ticker, label);
+    }
+  });
+  return text.replace(/\),(?=\S)/g, '), ');
+};
+
+const formatWeightPct = (value) => `${Number(value || 0).toFixed(1)}%`;
+
+const formatDeltaPct = (value) => {
+  const number = Number(value || 0);
+  const sign = number > 0 ? '+' : '';
+  return `${sign}${number.toFixed(1)}%p`;
+};
+
+const ActionAssetRoute = ({ source, hedge, assetLabelMap }) => (
+  <div className="action-route mt-3">
+    <span>{formatAssetList(source, assetLabelMap)}</span>
+    <ArrowRight size={14} />
+    <span>{formatAssetList(hedge, assetLabelMap)}</span>
+  </div>
+);
+
+const AdjustmentRatioList = ({ rows = [], assetLabelMap, idPrefix }) => {
+  if (!rows.length) return null;
+  return (
+    <div className="adjustment-ratio-list" aria-label="조정 비율">
+      {rows.map((item) => (
+        <div className={`adjustment-ratio-row ${item.delta < 0 ? 'trim' : 'add'}`} key={`${idPrefix}-${item.ticker}`}>
+          <span>{formatAssetWithTicker(item.ticker, assetLabelMap)}</span>
+          <strong>
+            {formatWeightPct(item.currentWeight)} → {formatWeightPct(item.proposedWeight)}
+          </strong>
+          <em>{formatDeltaPct(item.delta)}</em>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 const formatInternalScore = (value) => {
@@ -172,6 +269,7 @@ export const ImprovementReport = () => {
   const [dashboardPayload, setDashboardPayload] = useState(null);
   const [portfolioPreview, setPortfolioPreview] = useState(null);
   const [previewError, setPreviewError] = useState('');
+  const [backendAssets, setBackendAssets] = useState([]);
   const [serviceStatus, setServiceStatus] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
@@ -195,6 +293,7 @@ export const ImprovementReport = () => {
   const [lastAnalysisRun, setLastAnalysisRun] = useState(null);
 
   const selectedPortfolio = portfolios.find((p) => String(p.id) === String(selectedPortfolioId));
+  const assetLabelMap = useMemo(() => buildAssetLabelMap(backendAssets, portfolios), [backendAssets, portfolios]);
   const selectedPortfolioRunKey = portfolioRunKey(selectedPortfolio);
   const lastRunAppliesToSelected = Boolean(lastAnalysisRun?.portfolioKey && lastAnalysisRun.portfolioKey === selectedPortfolioRunKey);
   const reportModel = useMemo(
@@ -297,6 +396,20 @@ export const ImprovementReport = () => {
   const hasMoreActionCards = actionCards.length > 3 || (actionCards.length === 0 && reviewCandidateRows.length > 3);
   const hiddenActionCardCount = Math.max(0, (actionCards.length > 0 ? actionCards.length : reviewCandidateRows.length) - 3);
   const apiErrorIsTimeout = /요청 시간이 초과|timeout|timed out/i.test(apiError || '');
+
+  useEffect(() => {
+    let cancelled = false;
+    getAssets({ timeoutMs: 30 * 1000 })
+      .then((payload) => {
+        if (!cancelled) setBackendAssets(payload.assets || []);
+      })
+      .catch(() => {
+        if (!cancelled) setBackendAssets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadBackendDashboard = async (requestOptions = {}) => {
     setIsLoading(true);
@@ -1075,7 +1188,7 @@ export const ImprovementReport = () => {
                           </div>
                         </div>
                         <p className="risk-summary">
-                          이 위험은 주로 {item.sourceHoldings.map((holding) => holding.ticker).join(', ') || '보유 자산'}에서 만들어집니다.
+                          이 위험은 주로 {item.sourceHoldings.map((holding) => formatAssetWithTicker(holding.ticker, assetLabelMap)).join(', ') || '보유 자산'}에서 만들어집니다.
                         </p>
                         <div className="cause-stack-section">
                           <div className="cause-stack-label">위험 유발 자산</div>
@@ -1089,7 +1202,7 @@ export const ImprovementReport = () => {
                                     style={{ width: `${segment.displayPct}%`, backgroundColor: segment.color }}
                                     title={`${segment.ticker} ${segment.displayPct.toFixed(1)}%`}
                                   >
-                                    {segment.displayPct >= 16 ? `${segment.ticker} ${segment.displayPct.toFixed(0)}%` : segment.displayPct >= 8 ? segment.ticker : ''}
+                                    {segment.displayPct >= 16 ? `${assetDisplayName(segment.ticker, assetLabelMap)} ${segment.displayPct.toFixed(0)}%` : segment.displayPct >= 8 ? assetDisplayName(segment.ticker, assetLabelMap) : ''}
                                   </div>
                                 ))}
                               </div>
@@ -1097,7 +1210,7 @@ export const ImprovementReport = () => {
                                 {causeSegments.map((segment) => (
                                   <span key={`${item.riskSleeve}-${segment.ticker}-legend`}>
                                     <i style={{ backgroundColor: segment.color }}></i>
-                                    {segment.ticker} {segment.displayPct.toFixed(1)}%
+                                    {formatAssetWithTicker(segment.ticker, assetLabelMap)} {segment.displayPct.toFixed(1)}%
                                   </span>
                                 ))}
                               </div>
@@ -1107,7 +1220,7 @@ export const ImprovementReport = () => {
                           )}
                           {item.offsetHoldings.length > 0 && (
                             <div className="offset-note">
-                              상쇄 자산: {item.offsetHoldings.slice(0, 2).map((holding) => holding.ticker || holding.asset_ticker || holding).join(', ')}
+                              상쇄 자산: {item.offsetHoldings.slice(0, 2).map((holding) => formatAssetWithTicker(holding.ticker || holding.asset_ticker || holding, assetLabelMap)).join(', ')}
                             </div>
                           )}
                         </div>
@@ -1133,6 +1246,7 @@ export const ImprovementReport = () => {
             <div className="action-card-grid">
               {reportModel.prescriptionRows.map((row) => {
                 const candidate = row.candidate;
+                const adjustmentRows = candidate?.adjustmentRows || [];
                 return (
                   <article className="action-card" key={row.id} data-testid="prescription-card">
                     <div className="flex justify-between items-start gap-3">
@@ -1148,13 +1262,16 @@ export const ImprovementReport = () => {
                       <span className="text-xs text-secondary">#{row.vulnerability.rank}</span>
                     </div>
                     <p className="text-xs text-secondary mt-3">
-                      줄일 자산: {row.sourceAssets.join(', ') || '보유자산 확인 필요'}
+                      줄일 자산: {formatAssetList(row.sourceAssets, assetLabelMap)}
                     </p>
-                    <div className="action-route mt-3">
-                      {candidate?.sourceAsset || row.sourceAssets.join(', ') || '-'} → {candidate?.hedgeAsset || '직접 후보 없음'}
-                    </div>
-                    <p className="text-xs mt-3">{row.reason}</p>
-                    {candidate?.reason && <p className="text-xs text-secondary mt-2">{candidate.reason}</p>}
+                    <ActionAssetRoute
+                      source={candidate?.sourceTickers || candidate?.sourceAsset || row.sourceAssets}
+                      hedge={candidate ? candidate.hedgeTickers || candidate.hedgeAsset : []}
+                      assetLabelMap={assetLabelMap}
+                    />
+                    <AdjustmentRatioList rows={adjustmentRows} assetLabelMap={assetLabelMap} idPrefix={row.id} />
+                    <p className="text-xs mt-3">{humanizeAssetText(row.reason, assetLabelMap)}</p>
+                    {candidate?.reason && <p className="text-xs text-secondary mt-2">{humanizeAssetText(candidate.reason, assetLabelMap)}</p>}
                     <div className="action-mini-metrics">
                       <span>취약점 개선 {Number(candidate?.improvePct || 0).toFixed(1)}%</span>
                       <span>{row.directMatch ? '직접 처방 근거 있음' : 'benchmark 표시'}</span>
@@ -1200,7 +1317,7 @@ export const ImprovementReport = () => {
                     <div className="detail-panel mt-4">
                       <div className="text-xs text-secondary mb-2">구성 종목</div>
                       <div className="text-sm">
-                        {selectedPortfolio.assets.map((asset) => `${asset.ticker || asset.name} (${asset.weight ?? '-'}%)`).join(', ')}
+                        {selectedPortfolio.assets.map((asset) => `${formatAssetWithTicker(asset.ticker || asset.name, assetLabelMap)} (${asset.weight ?? '-'}%)`).join(', ')}
                       </div>
                       <div className="text-xs text-secondary mt-3 mb-2">등록 기준 금액</div>
                       <div className="text-sm">₩{Math.round(selectedPortfolio.totalValue || 0).toLocaleString()}</div>
@@ -1237,8 +1354,9 @@ export const ImprovementReport = () => {
                           <div className="text-xs text-secondary mb-2">취약점 연결</div>
                           <div className="text-sm">{action?.riskSleeveLabel || '선택 액션 없음'}</div>
                           <div className="text-xs text-secondary mt-3 mb-2">원인 자산과 후보</div>
-                          <div className="text-sm">{action ? sourceAssetsText(action) : '추가 분석 필요'}</div>
-                          {action?.rejectedReasonKo && <div className="text-xs text-secondary mt-3">{action.rejectedReasonKo}</div>}
+                          <div className="text-sm">{action ? sourceAssetsText(action, assetLabelMap) : '추가 분석 필요'}</div>
+                          <AdjustmentRatioList rows={action?.adjustmentRows || []} assetLabelMap={assetLabelMap} idPrefix={`${type}-detail`} />
+                          {action?.rejectedReasonKo && <div className="text-xs text-secondary mt-3">{humanizeAssetText(action.rejectedReasonKo, assetLabelMap)}</div>}
                         </div>
                       )}
                       <div className="expand-indicator mt-2">
@@ -1323,13 +1441,18 @@ export const ImprovementReport = () => {
                             추천 점수 {candidate.userDisplayScore}/100
                           </span>
                         )}
-                        <h4>{actionTypeLabel(candidate.actionType)} · {candidate.hedgeAsset || '-'}</h4>
+                        <h4>{actionTypeLabel(candidate.actionType)} · {formatAssetList(candidate.hedgeTickers || candidate.hedgeAsset, assetLabelMap)}</h4>
                       </div>
                       <span className="text-xs text-secondary">#{index + 1}</span>
                     </div>
-                    <div className="action-route mt-3">{candidate.sourceAsset || '-'} → {candidate.hedgeAsset || '-'}</div>
+                    <ActionAssetRoute
+                      source={candidate.sourceTickers || candidate.sourceAsset}
+                      hedge={candidate.hedgeTickers || candidate.hedgeAsset}
+                      assetLabelMap={assetLabelMap}
+                    />
+                    <AdjustmentRatioList rows={candidate.adjustmentRows || []} assetLabelMap={assetLabelMap} idPrefix={`review-${candidate.id}`} />
                     <p className="text-xs text-secondary mt-3">{candidate.riskSleeveLabel}</p>
-                    <p className="text-xs mt-3">{candidate.reason || '추천 기준을 충족하지 않아 공식 추천이 아닙니다.'}</p>
+                    <p className="text-xs mt-3">{humanizeAssetText(candidate.reason || '추천 기준을 충족하지 않아 공식 추천이 아닙니다.', assetLabelMap)}</p>
                     <div className="action-mini-metrics">
                       <span>취약성 개선 후보값 {candidate.improvePct.toFixed(1)}%</span>
                       <span>공식 추천 아님</span>
@@ -1365,10 +1488,15 @@ export const ImprovementReport = () => {
                     <span className="text-xs text-secondary">#{action.rank}</span>
                   </div>
                   <p className="text-xs text-secondary mt-3">{action.riskSleeveLabel}</p>
-                  <div className="action-route mt-3">{sourceAssetsText(action)}</div>
-                  <p className="text-xs mt-3">{action.expectedEffect || action.actionReasonKo}</p>
+                  <ActionAssetRoute
+                    source={action.sourceTickers || action.sourceAsset}
+                    hedge={action.hedgeTickers || action.hedgeAsset || action.candidateLabel}
+                    assetLabelMap={assetLabelMap}
+                  />
+                  <AdjustmentRatioList rows={action.adjustmentRows || []} assetLabelMap={assetLabelMap} idPrefix={`action-${action.id}`} />
+                  <p className="text-xs mt-3">{humanizeAssetText(action.expectedEffect || action.actionReasonKo, assetLabelMap)}</p>
                   {action.recommendationGradeReason && (
-                    <p className="text-xs text-secondary mt-2">{action.recommendationGradeReason}</p>
+                    <p className="text-xs text-secondary mt-2">{humanizeAssetText(action.recommendationGradeReason, assetLabelMap)}</p>
                   )}
                   <div className="action-mini-metrics">
                     <span>CVaR {formatMetricDelta(action.baseMetrics.cvar, action.proposedMetrics.cvar, 'cvar')}</span>
@@ -1419,10 +1547,10 @@ export const ImprovementReport = () => {
                       <td>{row.status === 'REVIEW_ACTION' ? '검토 필요 후보' : row.status}</td>
                       <td>{actionTypeLabel(row.actionType)}</td>
                       <td>{row.riskSleeveLabel}</td>
-                      <td>{row.sourceAsset}</td>
-                      <td>{row.hedgeAsset}</td>
+                      <td>{formatAssetList(row.sourceTickers || row.sourceAsset, assetLabelMap)}</td>
+                      <td>{formatAssetList(row.hedgeTickers || row.hedgeAsset, assetLabelMap)}</td>
                       <td>{row.improvePct.toFixed(1)}%</td>
-                      <td>{row.reason}</td>
+                      <td>{humanizeAssetText(row.reason, assetLabelMap)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -179,9 +179,9 @@ NOWCAST_DEFINITIONS = [
     },
     {
         "code": "kr_defensive_rotation_intraday",
-        "name_ko": "한국장 방어주 상대강세",
+        "name_ko": "한국장 방어적 로테이션",
         "lens": "korea_market",
-        "interpretation_ko": "바이오/금융 등 방어 성격 basket이 지수·성장주보다 상대적으로 강한지 확인해 장중 방어적 rotation을 표시합니다.",
+        "interpretation_ko": "바이오/금융 등 방어 성격 basket이 지수·성장주보다 상대적으로 덜 약한지 확인해 장중 방어적 rotation을 표시합니다.",
         "strong_status": "DEFENSIVE_ROTATION",
         "signals": [
             {"name": "defensive_relative_session", "label": "Defensive basket vs KOSPI200 session", "type": "relative", "long_tickers": KR_DEFENSIVE_TICKERS, "short_tickers": ["^KS200"], "metric": "return_session", "direction": "positive", "threshold": 0.010, "weight": 0.35},
@@ -701,7 +701,7 @@ def render_intraday_dashboard(
 
   <section class="section">
     <h2>Nowcast Vector</h2>
-    <table><thead><tr><th>Nowcast</th><th>Status</th><th>Score</th><th>신뢰도</th><th>Drivers</th><th>해석</th></tr></thead><tbody>
+    <table><thead><tr><th>Nowcast</th><th>Status</th><th>Score</th><th>자료충분도</th><th>Drivers</th><th>해석</th></tr></thead><tbody>
       {''.join(vector_table)}
     </tbody></table>
   </section>

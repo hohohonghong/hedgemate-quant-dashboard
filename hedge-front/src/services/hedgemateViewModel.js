@@ -178,6 +178,52 @@ const splitTickers = (value) => {
     .filter(Boolean);
 };
 
+const parseWeightMap = (value) => {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const buildAdjustmentRows = (row, sourceTickers = [], hedgeTickers = []) => {
+  const before = parseWeightMap(row.before_weights_json || row.beforeWeightsJson || row.beforeWeights);
+  const after = parseWeightMap(row.after_weights_json || row.afterWeightsJson || row.afterWeights);
+  const tickers = new Set([...Object.keys(before), ...Object.keys(after)]);
+
+  if (tickers.size === 0) {
+    sourceTickers.forEach((ticker) => tickers.add(ticker));
+    hedgeTickers.forEach((ticker) => tickers.add(ticker));
+  }
+
+  return [...tickers]
+    .map((ticker) => {
+      const beforeWeight = toNumber(before[ticker], null);
+      const afterWeight = toNumber(after[ticker], null);
+      const fallbackBefore = sourceTickers.includes(ticker)
+        ? toNumber(row.source_current_weight_pct ?? row.current_weight, 0)
+        : toNumber(row.hedge_current_weight_pct, 0);
+      const fallbackAfter = sourceTickers.includes(ticker)
+        ? toNumber(row.source_proposed_weight_pct ?? row.proposed_weight, 0)
+        : toNumber(row.hedge_proposed_weight_pct, 0);
+      const currentWeight = beforeWeight ?? fallbackBefore;
+      const proposedWeight = afterWeight ?? fallbackAfter;
+      const delta = proposedWeight - currentWeight;
+      return {
+        ticker,
+        currentWeight,
+        proposedWeight,
+        delta,
+        role: sourceTickers.includes(ticker) ? 'source' : hedgeTickers.includes(ticker) ? 'hedge' : 'unchanged',
+      };
+    })
+    .filter((item) => Math.abs(item.delta) >= 0.005)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.ticker.localeCompare(b.ticker));
+};
+
 const unsafeDisplayReplacements = [
   ['정식 실행 추천', '검증 통과 액션'],
   ['정식 추천', '검증 통과 액션'],
@@ -260,6 +306,7 @@ const normalizeAction = (row, index, decision, portfolioMatches = true) => {
   const sourceTickers = splitTickers(row.source_tickers || row.source_asset || row.sourceAsset);
   const recommendationGrade = normalizeGrade(row);
   const scoreContract = scoreContractFromRow(row, recommendationGrade);
+  const adjustmentRows = buildAdjustmentRows(row, sourceTickers, hedgeTickers);
 
   return {
     id: row.action_id || row.actionId || `action-${index + 1}`,
@@ -285,6 +332,7 @@ const normalizeAction = (row, index, decision, portfolioMatches = true) => {
     riskSleeveLabel: row.risk_sleeve_label_ko || row.riskSleeveLabelKo || row.risk_sleeve || '리스크 축',
     sourceTickers,
     hedgeTickers,
+    adjustmentRows,
     candidateLabel: row.candidate_label || row.candidateLabel || hedgeTickers.join(' + ') || '헷지 후보',
     currentWeight: toNumber(row.current_weight ?? row.source_current_weight_pct, 0),
     proposedWeight: toNumber(row.proposed_weight ?? row.source_proposed_weight_pct, 0),
@@ -354,6 +402,9 @@ const normalizeAttribution = (row, index) => ({
 const normalizeCandidate = (row, index) => {
   const recommendationGrade = normalizeGrade(row);
   const scoreContract = scoreContractFromRow(row, recommendationGrade);
+  const sourceTickers = splitTickers(row.source_tickers || row.source_asset || row.sourceAsset);
+  const hedgeTickers = splitTickers(row.candidate_tickers || row.hedge_asset || row.hedgeAsset);
+  const adjustmentRows = buildAdjustmentRows(row, sourceTickers, hedgeTickers);
   return {
     id: row.action_id || `candidate-${index + 1}`,
     status: row.action_status === 'FORMAL_ACTION' && !toBool(row.can_execute_action) ? 'REVIEW_ACTION' : (row.action_status || 'NO_ACTION'),
@@ -367,8 +418,11 @@ const normalizeCandidate = (row, index) => {
     scoreMethodVersion: scoreContract.scoreMethodVersion,
     riskSleeve: row.risk_sleeve || row.riskSleeve || '',
     riskSleeveLabel: row.risk_sleeve_label_ko || row.risk_sleeve || '',
-    sourceAsset: row.source_asset || row.source_tickers || '',
-    hedgeAsset: row.candidate_label || row.hedge_asset || row.candidate_tickers || '',
+    sourceAsset: sourceTickers.join(', ') || row.source_asset || row.source_tickers || '',
+    hedgeAsset: row.candidate_label || hedgeTickers.join(', ') || row.hedge_asset || row.candidate_tickers || '',
+    sourceTickers,
+    hedgeTickers,
+    adjustmentRows,
     improvePct: toNumber(row.vulnerability_improve_pct, 0),
     canExecute: toBool(row.can_execute_action),
     directVulnerabilityPrescription: toBool(row.direct_vulnerability_prescription || row.directVulnerabilityPrescription),
@@ -439,6 +493,9 @@ const prescriptionCandidateFromAction = (action) => ({
   riskSleeveLabel: action.riskSleeveLabel,
   sourceAsset: action.sourceTickers.join(', '),
   hedgeAsset: action.candidateLabel || action.hedgeTickers.join(', '),
+  sourceTickers: action.sourceTickers,
+  hedgeTickers: action.hedgeTickers,
+  adjustmentRows: action.adjustmentRows,
   improvePct: action.vulnerabilityImprovePct,
   canExecute: action.canExecute,
   directVulnerabilityPrescription: Boolean(action.directVulnerabilityPrescription),

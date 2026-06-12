@@ -208,6 +208,8 @@ try {
         source_tickers: 'AAPL',
         candidate_tickers: 'GLD',
         candidate_label: 'GLD',
+        before_weights_json: JSON.stringify({ AAPL: 40, GLD: 0 }),
+        after_weights_json: JSON.stringify({ AAPL: 35, GLD: 5 }),
         vulnerability_improve_pct: 99,
       },
       {
@@ -223,6 +225,8 @@ try {
         source_tickers: 'AAPL',
         candidate_tickers: 'PSQ',
         candidate_label: 'PSQ',
+        before_weights_json: JSON.stringify({ AAPL: 40, PSQ: 0 }),
+        after_weights_json: JSON.stringify({ AAPL: 35, PSQ: 5 }),
         vulnerability_improve_pct: 8,
       },
     ],
@@ -283,6 +287,19 @@ try {
   if (scoreResult.prescriptionRows[0]?.candidate?.id !== 'b_candidate') {
     fail('prescription row should use grade -> userDisplayScore -> improvePct ordering', scoreResult.prescriptionRows[0]);
   }
+  const primaryAdjustments = scoreResult.actionCards[0]?.adjustmentRows || [];
+  if (primaryAdjustments.length !== 2) {
+    fail('action card should expose before/after adjustment rows', primaryAdjustments);
+  }
+  if (!primaryAdjustments.some((row) => row.ticker === 'AAPL' && row.currentWeight === 40 && row.proposedWeight === 35 && row.delta === -5)) {
+    fail('source asset trim ratio was not parsed from before/after weights', primaryAdjustments);
+  }
+  if (!primaryAdjustments.some((row) => row.ticker === 'PSQ' && row.currentWeight === 0 && row.proposedWeight === 5 && row.delta === 5)) {
+    fail('hedge asset add ratio was not parsed from before/after weights', primaryAdjustments);
+  }
+  if (scoreResult.prescriptionRows[0]?.candidate?.adjustmentRows?.length !== 2) {
+    fail('prescription row candidate should carry adjustment rows', scoreResult.prescriptionRows[0]);
+  }
 
   console.log(JSON.stringify({
     ok: true,
@@ -305,6 +322,7 @@ try {
       firstActionScore: scoreResult.actionCards[0]?.userDisplayScore,
       cActionScore: scoreResult.actionCards[1]?.userDisplayScore,
       prescriptionPrimary: scoreResult.prescriptionRows[0]?.candidate?.id,
+      adjustmentRows: scoreResult.actionCards[0]?.adjustmentRows,
     },
   }, null, 2));
 } finally {

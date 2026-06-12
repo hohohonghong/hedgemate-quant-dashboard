@@ -1051,12 +1051,65 @@
 }
 
 .action-route {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
   padding: 0.55rem 0.7rem;
   border-radius: 8px;
   background: rgba(168, 85, 247, 0.08);
   color: var(--text-primary);
   font-size: 0.78rem;
   font-weight: 600;
+}
+
+.action-route span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.adjustment-ratio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+  margin-top: 0.75rem;
+}
+
+.adjustment-ratio-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.34);
+  font-size: 0.72rem;
+}
+
+.adjustment-ratio-row span {
+  min-width: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.adjustment-ratio-row strong {
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.adjustment-ratio-row em {
+  font-style: normal;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.adjustment-ratio-row.trim em {
+  color: #fca5a5;
+}
+
+.adjustment-ratio-row.add em {
+  color: #86efac;
 }
 
 .action-mini-metrics {
