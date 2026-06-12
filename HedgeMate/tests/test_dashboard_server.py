@@ -1276,6 +1276,86 @@ class DashboardServerTests(unittest.TestCase):
         intraday_payload = next(payload for payload in market_payloads if payload["mode"] == "intraday_nowcast")
         self.assertNotIn("reuseRaw", intraday_payload)
 
+    def test_startup_followup_uses_market_refresh_result_freshness(self):
+        class ImmediateThread:
+            def __init__(self, target, args=(), kwargs=None, daemon=None):
+                self.target = target
+                self.args = args
+                self.kwargs = kwargs or {}
+
+            def start(self):
+                self.target(*self.args, **self.kwargs)
+
+        calls = []
+
+        stale_after_market_refresh = {
+            "status": "stale",
+            "marketDataFresh": True,
+            "scenarioFinalFresh": True,
+            "activeBundleOlderThanMarketCache": True,
+            "dataVersion": "20260610",
+            "marketDataVersion": "20260612",
+        }
+
+        def fake_refresh(job_id, payload, runner):
+            calls.append(payload["mode"])
+            result = {"ok": True, "mode": payload["mode"]}
+            if payload["mode"] == "market_data_only":
+                result["freshness"] = stale_after_market_refresh
+            serve_dashboard._update_run_job(
+                job_id,
+                status="completed",
+                stage="complete",
+                result=result,
+            )
+
+        initial_freshness = {
+            "status": "stale",
+            "skipHeavyRefresh": False,
+            "marketDataFresh": True,
+            "scenarioFinalFresh": False,
+            "marketDataStaleTickers": [],
+            "marketDataFailedTickers": [],
+            "activeBundleOlderThanMarketCache": False,
+        }
+        reloaded_freshness = {
+            "status": "current",
+            "skipHeavyRefresh": True,
+            "marketDataFresh": True,
+            "scenarioFinalFresh": True,
+            "marketDataStaleTickers": [],
+            "marketDataFailedTickers": [],
+            "activeBundleOlderThanMarketCache": False,
+        }
+
+        with serve_dashboard.RUN_JOBS_LOCK:
+            serve_dashboard.RUN_JOBS.clear()
+        with mock.patch.object(serve_dashboard, "load_data_freshness", side_effect=[initial_freshness, reloaded_freshness]), \
+             mock.patch.object(serve_dashboard, "_run_refresh_market_data_job", side_effect=fake_refresh), \
+             mock.patch.object(
+                 serve_dashboard,
+                 "scheduled_portfolio_reanalysis_payload",
+                 return_value={
+                     "mode": "portfolio_reanalysis",
+                     "dataVersion": "20260612",
+                     "portfolioRows": [{"ticker": "AAPL", "amountKrw": 10_000_000}],
+                 },
+             ):
+            job = serve_dashboard.launch_refresh_market_data_job(
+                {
+                    "mode": "market_data_only",
+                    "startupRefresh": True,
+                    "followupPortfolioReanalysis": True,
+                },
+                runner=lambda *_args, **_kwargs: None,
+                thread_factory=ImmediateThread,
+            )
+
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(calls, ["market_data_only", "portfolio_reanalysis"])
+        self.assertEqual(job["result"]["mode"], "portfolio_reanalysis")
+        self.assertEqual(job["result"]["startupMarketRefresh"]["mode"], "market_data_only")
+
     def test_scheduler_waits_for_next_three_hour_anchor(self):
         old_grace = serve_dashboard.SCHEDULER_ANCHOR_GRACE_SECONDS
         serve_dashboard.SCHEDULER_ANCHOR_GRACE_SECONDS = 3 * 60

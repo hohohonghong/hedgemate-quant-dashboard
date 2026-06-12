@@ -4808,6 +4808,14 @@ def startup_portfolio_reanalysis_needed(freshness):
     )
 
 
+def startup_followup_reanalysis_needed(current_freshness, market_refresh_snapshot=None):
+    if startup_portfolio_reanalysis_needed(current_freshness):
+        return True
+    result = (market_refresh_snapshot or {}).get("result")
+    result_freshness = result.get("freshness") if isinstance(result, dict) else None
+    return startup_portfolio_reanalysis_needed(result_freshness)
+
+
 def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_factory=threading.Thread):
     payload = payload or {}
     mode = str(payload.get("mode") or "market_data_only").strip() or "market_data_only"
@@ -4928,7 +4936,7 @@ def launch_refresh_market_data_job(payload=None, runner=subprocess.run, thread_f
                 mode == "market_data_only"
                 and payload.get("startupRefresh")
                 and payload.get("followupPortfolioReanalysis")
-                and startup_portfolio_reanalysis_needed(load_data_freshness())
+                and startup_followup_reanalysis_needed(load_data_freshness(), market_refresh_snapshot)
             ):
                 portfolio_payload = scheduled_portfolio_reanalysis_payload()
                 if portfolio_payload:
