@@ -138,6 +138,13 @@ const sourceAssetsText = (action, assetLabelMap) => {
   return `${formatAssetList(source, assetLabelMap)} → ${formatAssetList(hedge, assetLabelMap)}`;
 };
 
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const replaceTickerToken = (text, ticker, label) => {
+  const pattern = new RegExp(`(^|[^A-Za-z0-9._-])(${escapeRegExp(ticker)})(?=$|[^A-Za-z0-9._-])`, 'g');
+  return text.replace(pattern, `$1${label}`);
+};
+
 const humanizeAssetText = (value, assetLabelMap) => {
   let text = String(value || '');
   const tickers = [...assetLabelMap.keys()]
@@ -146,7 +153,7 @@ const humanizeAssetText = (value, assetLabelMap) => {
   tickers.forEach((ticker) => {
     const label = formatAssetWithTicker(ticker, assetLabelMap);
     if (label && label !== ticker) {
-      text = text.replaceAll(ticker, label);
+      text = replaceTickerToken(text, ticker, label);
     }
   });
   return text.replace(/\),(?=\S)/g, '), ');
