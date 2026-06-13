@@ -1967,6 +1967,53 @@ class DashboardServerTests(unittest.TestCase):
         )
         self.assertNotIn("C:\\Users", status["vectorPath"])
 
+    def test_latest_intraday_nowcast_status_uses_last_weekday_anchor_on_weekend(self):
+        old_values = {
+            name: getattr(serve_dashboard, name)
+            for name in (
+                "ROOT",
+                "SCENARIO_RESEARCH_ROOT",
+                "SCENARIO_OUTPUT_DIR",
+                "SCENARIO_REPORT_DIR",
+                "SCENARIO_NOWCAST_DIR",
+            )
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            serve_dashboard.ROOT = workspace / "HedgeMate"
+            serve_dashboard.SCENARIO_RESEARCH_ROOT = workspace / "scenario_research"
+            serve_dashboard.SCENARIO_OUTPUT_DIR = serve_dashboard.SCENARIO_RESEARCH_ROOT / "outputs"
+            serve_dashboard.SCENARIO_REPORT_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "reports"
+            serve_dashboard.SCENARIO_NOWCAST_DIR = serve_dashboard.SCENARIO_OUTPUT_DIR / "nowcast_vectors"
+            serve_dashboard.SCENARIO_REPORT_DIR.mkdir(parents=True)
+            serve_dashboard.SCENARIO_NOWCAST_DIR.mkdir(parents=True)
+            filename = "current_intraday_nowcast_1h_intraday-refresh-20260612.json"
+            (serve_dashboard.SCENARIO_REPORT_DIR / "intraday_nowcast_metadata_1h_intraday-refresh-20260612.json").write_text(
+                json.dumps(
+                    {
+                        "data_version": "20260612",
+                        "interval": "1h",
+                        "latest_timestamp_kst": "2026-06-12T18:00:00+09:00",
+                        "vector_json_path": str(serve_dashboard.SCENARIO_NOWCAST_DIR / filename),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (serve_dashboard.SCENARIO_NOWCAST_DIR / filename).write_text(
+                json.dumps([{"nowcast_code": "kr_risk_on", "as_of_kst": "2026-06-12T18:00:00+09:00"}]),
+                encoding="utf-8",
+            )
+            try:
+                status = serve_dashboard.latest_intraday_nowcast_status(
+                    reference_dt=datetime(2026, 6, 13, 11, 30, tzinfo=serve_dashboard.KST)
+                )
+            finally:
+                for name, value in old_values.items():
+                    setattr(serve_dashboard, name, value)
+
+        self.assertTrue(status["fresh"])
+        self.assertEqual(status["requiredAnchorKst"], "2026-06-12T18:00:00+09:00")
+
     def test_refresh_request_attaches_to_running_refresh_job(self):
         with serve_dashboard.RUN_JOBS_LOCK:
             serve_dashboard.RUN_JOBS.clear()

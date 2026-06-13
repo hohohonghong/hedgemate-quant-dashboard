@@ -260,6 +260,28 @@ class ServerPersistenceAuthPortfolioTests(unittest.TestCase):
         self.assertGreaterEqual(snapshot_refresh.call_count, 3)
         snapshot_refresh.assert_any_call(("scenario_dashboard", "service_status"))
 
+    def test_stale_persistent_refresh_job_does_not_block_scheduler(self):
+        old_started_at = (
+            serve_dashboard.datetime.now(serve_dashboard.timezone.utc)
+            - serve_dashboard.timedelta(seconds=serve_dashboard.JOB_TIMEOUT_SECONDS + 60)
+        ).isoformat()
+        self.store.create_refresh_job(
+            "stale-refresh-lock",
+            serve_dashboard.REFRESH_JOB_TYPE_MARKET_DATA,
+            status="RUNNING",
+        )
+        self.store._execute(
+            "UPDATE refresh_jobs SET started_at = ?, created_at = ? WHERE job_id = ?",
+            (old_started_at, old_started_at, "stale-refresh-lock"),
+        )
+
+        running = serve_dashboard.persistent_running_refresh_job(serve_dashboard.REFRESH_JOB_TYPE_MARKET_DATA)
+
+        self.assertIsNone(running)
+        row = self.store.latest_refresh_job(serve_dashboard.REFRESH_JOB_TYPE_MARKET_DATA)
+        self.assertEqual(row["status"], "FAILED")
+        self.assertEqual(row["error_message"], "stale running refresh job expired")
+
     def test_status_reports_database_scheduler_and_selected_portfolio_state(self):
         user, _ = self.register_user("status@example.com")
         portfolio = serve_dashboard.save_portfolio_for_user(user["id"], portfolio_payload("Status Portfolio"))

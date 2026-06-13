@@ -2138,6 +2138,9 @@ def current_intraday_anchor_kst(reference_dt=None, bucket_hours=3):
         reference = reference.replace(tzinfo=KST)
     else:
         reference = reference.astimezone(KST)
+    if reference.weekday() >= 5:
+        days_back = reference.weekday() - 4
+        return (reference - timedelta(days=days_back)).replace(hour=18, minute=0, second=0, microsecond=0)
     anchor_hour = (reference.hour // bucket_hours) * bucket_hours
     return reference.replace(hour=anchor_hour, minute=0, second=0, microsecond=0)
 
@@ -5165,9 +5168,31 @@ def launch_intraday_news_overlay_job(payload=None, runner=subprocess.run, thread
     return _snapshot_run_job(job_id)
 
 
+def refresh_job_started_datetime(row):
+    if not row:
+        return None
+    return parse_iso_datetime(row.get("started_at") or row.get("created_at"), default_tz=timezone.utc)
+
+
+def persistent_refresh_job_expired(row, timeout_seconds=JOB_TIMEOUT_SECONDS):
+    started_at = refresh_job_started_datetime(row)
+    if not started_at:
+        return False
+    return (datetime.now(timezone.utc) - started_at.astimezone(timezone.utc)).total_seconds() > timeout_seconds
+
+
 def persistent_running_refresh_job(job_type):
     try:
-        return persistence_store().has_running_refresh_job(job_type)
+        row = persistence_store().has_running_refresh_job(job_type)
+        if row and persistent_refresh_job_expired(row):
+            persistence_store().update_refresh_job(
+                row.get("job_id"),
+                "FAILED",
+                error_message="stale running refresh job expired",
+                finished=True,
+            )
+            return None
+        return row
     except Exception:
         return None
 
