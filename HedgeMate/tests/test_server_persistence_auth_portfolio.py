@@ -282,6 +282,32 @@ class ServerPersistenceAuthPortfolioTests(unittest.TestCase):
         self.assertEqual(row["status"], "FAILED")
         self.assertEqual(row["error_message"], "stale running refresh job expired")
 
+    def test_previous_process_refresh_job_does_not_block_scheduler(self):
+        original_started_at = serve_dashboard.SERVER_STARTED_AT_UTC
+        try:
+            serve_dashboard.SERVER_STARTED_AT_UTC = serve_dashboard.datetime.now(serve_dashboard.timezone.utc)
+            previous_process_started_at = (
+                serve_dashboard.SERVER_STARTED_AT_UTC - serve_dashboard.timedelta(seconds=1)
+            ).isoformat()
+            self.store.create_refresh_job(
+                "previous-process-refresh-lock",
+                serve_dashboard.REFRESH_JOB_TYPE_MARKET_DATA,
+                status="RUNNING",
+            )
+            self.store._execute(
+                "UPDATE refresh_jobs SET started_at = ?, created_at = ? WHERE job_id = ?",
+                (previous_process_started_at, previous_process_started_at, "previous-process-refresh-lock"),
+            )
+
+            running = serve_dashboard.persistent_running_refresh_job(serve_dashboard.REFRESH_JOB_TYPE_MARKET_DATA)
+
+            self.assertIsNone(running)
+            row = self.store.latest_refresh_job(serve_dashboard.REFRESH_JOB_TYPE_MARKET_DATA)
+            self.assertEqual(row["status"], "FAILED")
+            self.assertEqual(row["error_message"], "stale running refresh job expired")
+        finally:
+            serve_dashboard.SERVER_STARTED_AT_UTC = original_started_at
+
     def test_status_reports_database_scheduler_and_selected_portfolio_state(self):
         user, _ = self.register_user("status@example.com")
         portfolio = serve_dashboard.save_portfolio_for_user(user["id"], portfolio_payload("Status Portfolio"))

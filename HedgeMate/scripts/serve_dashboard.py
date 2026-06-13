@@ -245,6 +245,7 @@ INTRADAY_NEWS_JOB_TYPE = "intraday_news_overlay"
 MARKET_REFRESH_MODES = {"market_data_only", "portfolio_reanalysis", "full_rebuild", "intraday_nowcast"}
 INTRADAY_NEWS_REFRESH_HOURS_KST = (9, 15, 21)
 KST = ZoneInfo("Asia/Seoul")
+SERVER_STARTED_AT_UTC = datetime.now(timezone.utc)
 SESSION_COOKIE_NAME = "hedgemate_session"
 SESSION_TTL_DAYS = 14
 PBKDF2_ITERATIONS = 260_000
@@ -5178,7 +5179,10 @@ def persistent_refresh_job_expired(row, timeout_seconds=JOB_TIMEOUT_SECONDS):
     started_at = refresh_job_started_datetime(row)
     if not started_at:
         return False
-    return (datetime.now(timezone.utc) - started_at.astimezone(timezone.utc)).total_seconds() > timeout_seconds
+    started_at_utc = started_at.astimezone(timezone.utc)
+    if started_at_utc < SERVER_STARTED_AT_UTC:
+        return True
+    return (datetime.now(timezone.utc) - started_at_utc).total_seconds() > timeout_seconds
 
 
 def persistent_running_refresh_job(job_type):
