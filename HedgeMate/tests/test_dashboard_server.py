@@ -1385,6 +1385,18 @@ class DashboardServerTests(unittest.TestCase):
                 ),
                 10,
             )
+            self.assertEqual(
+                serve_dashboard.scheduler_next_run_at(
+                    reference_dt=datetime(2026, 6, 13, 12, 1, tzinfo=serve_dashboard.KST)
+                ).isoformat(),
+                "2026-06-13T12:03:00+09:00",
+            )
+            self.assertGreaterEqual(
+                serve_dashboard.scheduler_next_wait_seconds(
+                    reference_dt=datetime(2026, 6, 13, 12, 1, tzinfo=serve_dashboard.KST)
+                ),
+                120,
+            )
         finally:
             serve_dashboard.SCHEDULER_ANCHOR_GRACE_SECONDS = old_grace
 

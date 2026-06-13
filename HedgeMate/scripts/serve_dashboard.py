@@ -5294,7 +5294,8 @@ def scheduler_next_run_at(reference_dt=None, interval_seconds=SCHEDULER_INTERVAL
         reference = reference.astimezone(KST)
     if interval_seconds != SCHEDULER_INTERVAL_SECONDS:
         return reference + timedelta(seconds=max(1, int(interval_seconds)))
-    anchor = current_intraday_anchor_kst(reference_dt=reference, bucket_hours=3)
+    anchor_hour = (reference.hour // 3) * 3
+    anchor = reference.replace(hour=anchor_hour, minute=0, second=0, microsecond=0)
     next_run = anchor + timedelta(seconds=SCHEDULER_ANCHOR_GRACE_SECONDS)
     if next_run <= reference:
         next_run = anchor + timedelta(hours=3, seconds=SCHEDULER_ANCHOR_GRACE_SECONDS)
