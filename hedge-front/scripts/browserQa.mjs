@@ -328,7 +328,7 @@ const evaluateReportIsolation = (text, portfolio) => {
     foreignTickersPresent: foreignTickers.filter((ticker) => text.includes(ticker)),
     hasMatchedResultSections: text.includes('ACTION_READY')
       || text.includes('REVIEW_ONLY')
-      || text.includes('Portfolio Vulnerability Top 3')
+      || text.includes('Portfolio Vulnerability')
       || text.includes('Vulnerability Prescriptions'),
     hasAnalysisRequiredState: text.includes('ANALYSIS_RUNNING')
       || text.includes('analysis')

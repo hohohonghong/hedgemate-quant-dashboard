@@ -3684,8 +3684,8 @@ def latest_scenario_bundle_context(product_manifest=None):
         or existing_artifact(SCENARIO_FINAL_DIR / f"top_active_scenarios_{final_run}.json")
     )
     final_metadata = (
-        resolve_scenario_manifest_artifact(scenario_manifest, "active_final_metadata", SCENARIO_REPORT_DIR)
-        or existing_artifact(SCENARIO_REPORT_DIR / f"final_market_state_metadata_{final_run}.json")
+        existing_artifact(SCENARIO_REPORT_DIR / f"final_market_state_metadata_{final_run}.json")
+        or resolve_scenario_manifest_artifact(scenario_manifest, "active_final_metadata", SCENARIO_REPORT_DIR)
     )
     if not has_scenario_manifest_context:
         scenario_vector = scenario_vector or resolve_product_artifact(product_manifest, "scenarioVector", SCENARIO_VECTOR_DIR)

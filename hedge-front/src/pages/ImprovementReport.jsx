@@ -1141,8 +1141,8 @@ export const ImprovementReport = () => {
           <section className="vulnerability-first-panel mt-6">
             <div className="section-title-row">
               <div>
-                <span className="eyebrow">Portfolio Vulnerability Top 3</span>
-                <h3>주의해야 할 위험 요인 TOP 3</h3>
+                <span className="eyebrow">Portfolio Vulnerability</span>
+                <h3>주의해야 할 주요 위험 요인</h3>
               </div>
               <span className="text-xs text-secondary">현재 분석 결과 기준</span>
             </div>

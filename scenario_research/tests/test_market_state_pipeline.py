@@ -83,10 +83,10 @@ class MarketStatePipelineTest(unittest.TestCase):
             ["SOXX", "UUP", "^VIX"],
         )
 
-    def test_required_market_state_cache_refreshes_when_stale(self):
+    def test_market_state_cache_refreshes_when_stale(self):
         self.assertTrue(should_refresh_market_state_cache("UUP", [("2026-06-09", 1.0)], "2026-06-10"))
         self.assertFalse(should_refresh_market_state_cache("UUP", [("2026-06-10", 1.0)], "2026-06-10"))
-        self.assertFalse(should_refresh_market_state_cache("MSFT", [("2026-06-09", 1.0)], "2026-06-10"))
+        self.assertTrue(should_refresh_market_state_cache("MSFT", [("2026-06-09", 1.0)], "2026-06-10"))
 
     def test_anchor_prefers_latest_date_with_required_market_state_tickers(self):
         anchor_date, metadata = choose_aligned_market_anchor(

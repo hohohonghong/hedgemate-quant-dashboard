@@ -131,8 +131,6 @@ def merge_price_series(existing, fetched):
 def should_refresh_market_state_cache(ticker, series, target_latest_date):
     if not series:
         return True
-    if ticker not in REQUIRED_MARKET_STATE_TICKERS:
-        return False
     latest_date = latest_series_date(series)
     return bool(target_latest_date and latest_date and latest_date < target_latest_date)
 
