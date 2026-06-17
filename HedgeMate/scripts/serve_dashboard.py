@@ -1176,7 +1176,10 @@ def cache_manifest_path(run_id):
 def read_product_manifest():
     manifest_path = ROOT / "outputs" / "latest_manifest.json"
     payload = read_json(manifest_path, {}) if manifest_path.exists() else {}
-    return payload if isinstance(payload, dict) else {}
+    if isinstance(payload, dict) and payload:
+        return payload
+    recovered = recovered_product_manifest_from_latest_outputs()
+    return recovered if isinstance(recovered, dict) else {}
 
 
 def read_active_manifest():
@@ -2962,6 +2965,203 @@ def latest_run_id_from_files(directory, pattern, regex):
         return None
     match = re.search(regex, path.name)
     return match.group(1) if match else None
+
+
+def portable_workspace_path(path):
+    if not path:
+        return None
+    candidate = Path(path)
+    try:
+        return candidate.resolve().relative_to(ROOT.parent.resolve()).as_posix()
+    except (OSError, ValueError):
+        return str(candidate)
+
+
+def first_existing_path(candidates):
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return Path(candidate)
+    return None
+
+
+def recovered_backtest_run_id(hedge_run):
+    if hedge_run:
+        preferred = OUTPUT_VALIDATION_DIR / f"walk_forward_backtest_backtest-{hedge_run}.csv"
+        if preferred.exists():
+            return f"backtest-{hedge_run}"
+    return latest_run_id_from_files(OUTPUT_VALIDATION_DIR, "walk_forward_backtest_*.csv", r"walk_forward_backtest_(.+)\.csv$")
+
+
+def recovered_scenario_run_id(final_run, data_version):
+    preferred = f"scenario-refresh-{data_version}" if data_version else None
+    if preferred and (SCENARIO_VECTOR_DIR / f"current_scenario_vector_{preferred}.csv").exists():
+        return preferred
+    if final_run and str(final_run).startswith("final-"):
+        candidate = str(final_run).replace("final-", "scenario-", 1)
+        if (SCENARIO_VECTOR_DIR / f"current_scenario_vector_{candidate}.csv").exists():
+            return candidate
+    path = latest_path(SCENARIO_VECTOR_DIR, "current_scenario_vector_scenario-*.csv")
+    if not path:
+        return preferred or final_run
+    match = re.search(r"current_scenario_vector_(.+)\.csv$", path.name)
+    return match.group(1) if match else (preferred or final_run)
+
+
+def recovered_portfolio_input_path(hedge_run):
+    return first_existing_path(
+        [
+            RUN_INPUT_DIR / safe_run_id_fragment(hedge_run or "") / "portfolio_weights.csv",
+            INPUT_DIR / "portfolio_weights.csv",
+        ]
+    )
+
+
+def recovered_final_metadata_path(final_run):
+    exact = SCENARIO_OUTPUT_DIR / "reports" / f"final_market_state_metadata_{final_run}.json"
+    if exact.exists():
+        return exact
+    candidates = sorted(
+        (SCENARIO_OUTPUT_DIR / "reports").glob(f"final_market_state_metadata_{final_run}*.json"),
+        key=lambda path: (path.stat().st_mtime, path.name),
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
+
+
+def recovered_scenario_vector_as_of(final_metadata, data_version):
+    metadata = read_json(final_metadata, {}) if final_metadata else {}
+    for key in (
+        "scenario_vector_as_of_date",
+        "scenarioVectorAsOfDate",
+        "data_as_of_date",
+        "dataAsOfDate",
+        "as_of_date",
+        "asOfDate",
+    ):
+        value = metadata.get(key) if isinstance(metadata, dict) else None
+        if value:
+            return str(value)[:10]
+    if data_version and re.fullmatch(r"\d{8}", str(data_version)):
+        return f"{data_version[:4]}-{data_version[4:6]}-{data_version[6:8]}"
+    return None
+
+
+def recovered_product_manifest_from_latest_outputs():
+    final_run = latest_run_id_from_files(
+        SCENARIO_FINAL_DIR,
+        "final_market_state_daily_*.csv",
+        r"final_market_state_daily_(.+)\.csv$",
+    )
+    hedge_run = latest_run_id_from_files(
+        OUTPUT_PROCESSED_DIR,
+        "features_summary_*.csv",
+        r"features_summary_(.+)\.csv$",
+    )
+    if not final_run or not hedge_run:
+        return {}
+
+    data_version = data_version_from_run_id(final_run) or data_version_from_run_id(hedge_run)
+    scenario_run = recovered_scenario_run_id(final_run, data_version)
+    backtest_run = recovered_backtest_run_id(hedge_run)
+    final_metadata = recovered_final_metadata_path(final_run)
+    portfolio_input = recovered_portfolio_input_path(hedge_run)
+    portfolio_fingerprint = current_portfolio_fingerprint(portfolio_input) if portfolio_input else None
+    portfolio_sha = file_sha256(portfolio_input) if portfolio_input else None
+    scenario_vector_as_of = recovered_scenario_vector_as_of(final_metadata, data_version)
+
+    artifact_candidates = {
+        "finalMarketState": [SCENARIO_FINAL_DIR / f"final_market_state_daily_{final_run}.csv"],
+        "scenarioConfidence": [SCENARIO_FINAL_DIR / f"scenario_confidence_{final_run}.csv"],
+        "topActiveScenarios": [SCENARIO_FINAL_DIR / f"top_active_scenarios_{final_run}.json"],
+        "scenarioVector": [SCENARIO_VECTOR_DIR / f"current_scenario_vector_{scenario_run}.csv"],
+        "finalScenarioVector": [SCENARIO_VECTOR_DIR / f"current_scenario_vector_{final_run}.csv"],
+        "finalMetadata": [final_metadata],
+        "features": [OUTPUT_PROCESSED_DIR / f"features_summary_{hedge_run}.csv"],
+        "portfolioInput": [portfolio_input],
+        "assetScenarioSensitivity": [OUTPUT_PROCESSED_DIR / f"asset_scenario_sensitivity_{hedge_run}.csv"],
+        "portfolioVulnerabilityAttribution": [
+            OUTPUT_REPORT_DIR / f"portfolio_vulnerability_attribution_{hedge_run}.csv",
+            OUTPUT_PROCESSED_DIR / f"portfolio_vulnerability_attribution_{hedge_run}.csv",
+        ],
+        "portfolioVulnerabilitySummary": [
+            OUTPUT_REPORT_DIR / f"portfolio_vulnerability_summary_{hedge_run}.json",
+            OUTPUT_REPORT_DIR / f"portfolio_vulnerability_summary_{hedge_run}.md",
+        ],
+        "hedgeActionCandidates": [
+            OUTPUT_REPORT_DIR / f"hedge_action_candidates_{hedge_run}.csv",
+            OUTPUT_REPORT_DIR / f"hedge_action_candidates_{hedge_run}.json",
+        ],
+        "hedgeActionPlan": [
+            OUTPUT_REPORT_DIR / f"hedge_action_plan_{hedge_run}.json",
+            OUTPUT_REPORT_DIR / f"hedge_action_plan_{hedge_run}.csv",
+        ],
+        "hedgeActionPlanSummary": [
+            OUTPUT_REPORT_DIR / f"hedge_action_plan_summary_{hedge_run}.json",
+            OUTPUT_REPORT_DIR / f"hedge_action_plan_summary_{hedge_run}.md",
+        ],
+        "portfolio1to1": [
+            OUTPUT_REPORT_DIR / f"portfolio_1to1_hedge_{hedge_run}_backtest_gated.csv",
+            OUTPUT_REPORT_DIR / f"portfolio_1to1_hedge_{hedge_run}.csv",
+        ],
+        "portfolioMulti": [
+            OUTPUT_REPORT_DIR / f"portfolio_multi_hedge_{hedge_run}_backtest_gated.csv",
+            OUTPUT_REPORT_DIR / f"portfolio_multi_hedge_{hedge_run}.csv",
+        ],
+        "recommendationStatusQa": [
+            OUTPUT_REPORT_DIR / f"recommendation_status_qa_post_backtest_{hedge_run}_backtest_gated.md",
+            OUTPUT_REPORT_DIR / f"recommendation_status_qa_{hedge_run}.md",
+        ],
+        "backtestCsv": [OUTPUT_VALIDATION_DIR / f"walk_forward_backtest_{backtest_run}.csv"],
+        "backtestSummary": [OUTPUT_REPORT_DIR / f"walk_forward_backtest_summary_{backtest_run}.md"],
+        "backtestGateSummary": [OUTPUT_REPORT_DIR / f"backtest_gate_summary_{hedge_run}_backtest_gated.md"],
+        "backtestAttributionCsv": [OUTPUT_REPORT_DIR / f"backtest_attribution_{backtest_run}.csv"],
+        "backtestAttributionSummary": [OUTPUT_REPORT_DIR / f"backtest_attribution_{backtest_run}.md"],
+        "formalGateAuditCsv": [OUTPUT_REPORT_DIR / f"formal_gate_audit_{hedge_run}_backtest_gated.csv"],
+        "formalGateAuditSummary": [OUTPUT_REPORT_DIR / f"formal_gate_audit_{hedge_run}_backtest_gated.md"],
+    }
+    artifacts = {}
+    for key, candidates in artifact_candidates.items():
+        path = first_existing_path(candidates)
+        if path:
+            artifacts[key] = portable_workspace_path(path)
+
+    now = _utc_iso()
+    bundle = {
+        "scenario_run": scenario_run,
+        "final_market_state_run": final_run,
+        "hedgemate_run": hedge_run,
+        "backtest_run": backtest_run,
+        "data_version": data_version,
+        "scenario_vector_as_of_date": scenario_vector_as_of,
+        "generated_at_utc": now,
+        "freshness_status": "FRESH",
+        "stale_reasons": [],
+        "portfolio_input_fingerprint": portfolio_fingerprint,
+        "portfolioTickers": (portfolio_fingerprint or {}).get("tickers") or [],
+        "portfolioInputPersisted": bool(portfolio_input),
+        "portfolioInputSha256": portfolio_sha,
+    }
+    return {
+        "manifest_version": "hedgemate_active_bundle_recovered_v1",
+        "generated_at_utc": now,
+        "freshness_status": "FRESH",
+        "stale_reasons": [],
+        "active_bundle": bundle,
+        "active_scenario_run": scenario_run,
+        "active_final_run": final_run,
+        "active_hedgemate_run": hedge_run,
+        "active_backtest_run": backtest_run,
+        "data_version": data_version,
+        "scenario_vector_as_of_date": scenario_vector_as_of,
+        "portfolio_input_fingerprint": portfolio_fingerprint,
+        "portfolioTickers": (portfolio_fingerprint or {}).get("tickers") or [],
+        "portfolioInputPersisted": bool(portfolio_input),
+        "portfolioInputSha256": portfolio_sha,
+        "portfolio_input_mismatch": False,
+        "artifacts": artifacts,
+        "event_overlay_status": dict(DEFAULT_EVENT_OVERLAY_STATUS),
+        "recovery_note": "Recovered from latest generated 2026 output files because latest_manifest.json was absent.",
+    }
 
 
 def fallback_product_manifest():
