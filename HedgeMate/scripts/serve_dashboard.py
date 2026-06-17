@@ -1185,7 +1185,10 @@ def read_product_manifest():
 def read_active_manifest():
     manifest_path = SCENARIO_OUTPUT_DIR / "latest_manifest.json"
     payload = read_json(manifest_path, {}) if manifest_path.exists() else {}
-    return payload if isinstance(payload, dict) else {}
+    if isinstance(payload, dict) and payload:
+        return payload
+    recovered = recovered_active_scenario_manifest_from_latest_outputs()
+    return recovered if isinstance(recovered, dict) else {}
 
 
 def resolve_any_artifact(raw_path, default_dir=None):
@@ -2977,6 +2980,16 @@ def portable_workspace_path(path):
         return str(candidate)
 
 
+def portable_scenario_output_path(path):
+    if not path:
+        return None
+    candidate = Path(path)
+    try:
+        return candidate.resolve().relative_to(SCENARIO_OUTPUT_DIR.resolve()).as_posix()
+    except (OSError, ValueError):
+        return portable_workspace_path(candidate)
+
+
 def first_existing_path(candidates):
     for candidate in candidates:
         if candidate and Path(candidate).exists():
@@ -3161,6 +3174,59 @@ def recovered_product_manifest_from_latest_outputs():
         "artifacts": artifacts,
         "event_overlay_status": dict(DEFAULT_EVENT_OVERLAY_STATUS),
         "recovery_note": "Recovered from latest generated 2026 output files because latest_manifest.json was absent.",
+    }
+
+
+def recovered_active_scenario_manifest_from_latest_outputs():
+    final_run = latest_run_id_from_files(
+        SCENARIO_FINAL_DIR,
+        "final_market_state_daily_*.csv",
+        r"final_market_state_daily_(.+)\.csv$",
+    )
+    if not final_run:
+        return {}
+    data_version = data_version_from_run_id(final_run)
+    scenario_run = recovered_scenario_run_id(final_run, data_version)
+    hedge_run = latest_run_id_from_files(
+        OUTPUT_PROCESSED_DIR,
+        "features_summary_*.csv",
+        r"features_summary_(.+)\.csv$",
+    )
+    backtest_run = recovered_backtest_run_id(hedge_run)
+    final_metadata = recovered_final_metadata_path(final_run)
+    scenario_vector_as_of = recovered_scenario_vector_as_of(final_metadata, data_version)
+    final_market_state = SCENARIO_FINAL_DIR / f"final_market_state_daily_{final_run}.csv"
+    scenario_confidence = SCENARIO_FINAL_DIR / f"scenario_confidence_{final_run}.csv"
+    top_active = SCENARIO_FINAL_DIR / f"top_active_scenarios_{final_run}.json"
+    final_summary = SCENARIO_OUTPUT_DIR / "reports" / f"final_market_state_summary_{final_run}.md"
+    scenario_vector = SCENARIO_VECTOR_DIR / f"current_scenario_vector_{scenario_run}.csv"
+    final_scenario_vector = SCENARIO_VECTOR_DIR / f"current_scenario_vector_{final_run}.csv"
+    return {
+        "active_final_run": final_run,
+        "active_final_market_state": final_market_state.name,
+        "active_final_market_state_path": portable_scenario_output_path(final_market_state),
+        "active_scenario_confidence": scenario_confidence.name,
+        "active_scenario_confidence_path": portable_scenario_output_path(scenario_confidence),
+        "active_top_active_scenarios": top_active.name,
+        "active_top_active_scenarios_path": portable_scenario_output_path(top_active),
+        "active_final_summary": final_summary.name if final_summary.exists() else None,
+        "active_final_summary_path": portable_scenario_output_path(final_summary) if final_summary.exists() else None,
+        "active_scenario_vector": scenario_vector.name if scenario_vector.exists() else None,
+        "active_scenario_vector_path": portable_scenario_output_path(scenario_vector) if scenario_vector.exists() else None,
+        "active_scenario_run": scenario_run,
+        "scenario_version": "v2",
+        "final_market_state_as_of_date": scenario_vector_as_of,
+        "active_hedgemate_run": hedge_run,
+        "active_backtest_run": backtest_run,
+        "active_final_scenario_vector": final_scenario_vector.name if final_scenario_vector.exists() else None,
+        "active_final_scenario_vector_path": portable_scenario_output_path(final_scenario_vector)
+        if final_scenario_vector.exists()
+        else None,
+        "scenario_vector_as_of_date": scenario_vector_as_of,
+        "active_final_metadata": final_metadata.name if final_metadata else None,
+        "active_final_metadata_path": portable_scenario_output_path(final_metadata) if final_metadata else None,
+        "active_hedgemate_product_manifest_path": "../../HedgeMate/outputs/latest_manifest.json",
+        "recovery_note": "Recovered from latest generated scenario outputs because scenario latest_manifest.json was absent.",
     }
 
 
